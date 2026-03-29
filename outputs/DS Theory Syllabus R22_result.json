@@ -1,0 +1,72 @@
+{
+  "filename": "DS Theory Syllabus R22.pdf",
+  "persona": "Student",
+  "model_used": "qwen2.5",
+  "summary": "Key Concepts:\n- Learn about algorithms, recursive functions, and their performance.\n- Understand sorting methods like quick sort and merge sort.\n- Know how to use stacks and queues for different tasks.\n- Develop linked lists such as single, double, and circular ones.\n- Study binary trees and graph traversal.\n\nKey Takeaways:\n1. Master linear and binary search algorithms.\n2. Learn various sorting techniques and hashing methods.\n3. Understand stack and queue operations and applications.\n4. Create different types of linked lists for storage.\n5. Analyze the performance of recursive functions.",
+  "hallucination": {
+    "score": 0.82,
+    "percentage": 82,
+    "label": "High Confidence \u2014 Summary is well grounded in document",
+    "color": "green",
+    "grounded_count": 9,
+    "total_count": 11,
+    "details": [
+      {
+        "sentence": "Key Concepts:\n- Learn about algorithms, recursive functions, and their performance",
+        "grounded": true,
+        "match_ratio": 0.8
+      },
+      {
+        "sentence": "- Understand sorting methods like quick sort and merge sort",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "- Know how to use stacks and queues for different tasks",
+        "grounded": true,
+        "match_ratio": 0.67
+      },
+      {
+        "sentence": "- Develop linked lists such as single, double, and circular ones",
+        "grounded": true,
+        "match_ratio": 0.6
+      },
+      {
+        "sentence": "- Study binary trees and graph traversal",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "Key Takeaways:\n1",
+        "grounded": false,
+        "match_ratio": 0.0
+      },
+      {
+        "sentence": "Master linear and binary search algorithms",
+        "grounded": true,
+        "match_ratio": 0.8
+      },
+      {
+        "sentence": "Learn various sorting techniques and hashing methods",
+        "grounded": true,
+        "match_ratio": 0.8
+      },
+      {
+        "sentence": "Understand stack and queue operations and applications",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "Create different types of linked lists for storage",
+        "grounded": false,
+        "match_ratio": 0.25
+      },
+      {
+        "sentence": "Analyze the performance of recursive functions",
+        "grounded": true,
+        "match_ratio": 0.75
+      }
+    ]
+  },
+  "audio_url": "http://localhost:8000/outputs/DS_Theory_Syllabus_R22_English_audio.mp3"
+}

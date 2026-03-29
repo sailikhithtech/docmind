@@ -1,0 +1,77 @@
+{
+  "filename": "dsa_test_dataset.pdf",
+  "persona": "Student",
+  "model_used": "qwen2.5",
+  "summary": "Arrays store elements in memory next to each other. They allow quick access but moving or removing items can be slow.\n\nLinked lists have nodes with data and pointers to other nodes. They can change size easily, but you cannot jump directly to any part.\n\nStacks use LIFO (last in first out) for adding and removing items.\n\nQueues use FIFO (first in first out).\n\nBinary search works well on sorted arrays by dividing them in half.\n\nSome questions test your knowledge of these data structures and algorithms.\n\n\nKey Takeaways: Arrays have quick access but slow insertions. Linked lists can change size easily but do not allow direct access. Stacks follow LIFO, Queues follow FIFO. Binary search divides arrays to find items quickly.",
+  "hallucination": {
+    "score": 0.92,
+    "percentage": 92,
+    "label": "High Confidence \u2014 Summary is well grounded in document",
+    "color": "green",
+    "grounded_count": 11,
+    "total_count": 12,
+    "details": [
+      {
+        "sentence": "Arrays store elements in memory next to each other",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "They allow quick access but moving or removing items can be slow",
+        "grounded": true,
+        "match_ratio": 0.33
+      },
+      {
+        "sentence": "Linked lists have nodes with data and pointers to other nodes",
+        "grounded": true,
+        "match_ratio": 0.5
+      },
+      {
+        "sentence": "They can change size easily, but you cannot jump directly to any part",
+        "grounded": false,
+        "match_ratio": 0.0
+      },
+      {
+        "sentence": "Stacks use LIFO (last in first out) for adding and removing items",
+        "grounded": true,
+        "match_ratio": 0.33
+      },
+      {
+        "sentence": "Queues use FIFO (first in first out)",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "Binary search works well on sorted arrays by dividing them in half",
+        "grounded": true,
+        "match_ratio": 0.8
+      },
+      {
+        "sentence": "Some questions test your knowledge of these data structures and algorithms",
+        "grounded": true,
+        "match_ratio": 0.5
+      },
+      {
+        "sentence": "Key Takeaways: Arrays have quick access but slow insertions",
+        "grounded": true,
+        "match_ratio": 0.75
+      },
+      {
+        "sentence": "Linked lists can change size easily but do not allow direct access",
+        "grounded": true,
+        "match_ratio": 0.4
+      },
+      {
+        "sentence": "Stacks follow LIFO, Queues follow FIFO",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "Binary search divides arrays to find items quickly",
+        "grounded": true,
+        "match_ratio": 0.8
+      }
+    ]
+  },
+  "audio_url": "http://localhost:8000/outputs/dsa_test_dataset_English_audio.mp3"
+}

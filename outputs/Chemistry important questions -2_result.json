@@ -1,0 +1,47 @@
+{
+  "filename": "Chemistry important questions -2.pdf",
+  "persona": "Student",
+  "model_used": "qwen2.5",
+  "summary": "Phase rule helps us understand how different parts of a system behave together when they are in balance.\n\nA phase is like a separate area within a system that has its own characteristics and can be physically separated from other areas.\n\nComponents are substances in a system that can change independently.\n\nKey Takeaways:\n- Phase rule explains the conditions needed for systems to be balanced.\n- A phase is a part of a system with its own properties.\n- Components are substances that can vary separately within a system.",
+  "hallucination": {
+    "score": 1.0,
+    "percentage": 100,
+    "label": "High Confidence \u2014 Summary is well grounded in document",
+    "color": "green",
+    "grounded_count": 6,
+    "total_count": 6,
+    "details": [
+      {
+        "sentence": "Phase rule helps us understand how different parts of a system behave together when they are in balance",
+        "grounded": true,
+        "match_ratio": 0.5
+      },
+      {
+        "sentence": "A phase is like a separate area within a system that has its own characteristics and can be physically separated from other areas",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "Components are substances in a system that can change independently",
+        "grounded": true,
+        "match_ratio": 0.6
+      },
+      {
+        "sentence": "Key Takeaways:\n- Phase rule explains the conditions needed for systems to be balanced",
+        "grounded": true,
+        "match_ratio": 0.33
+      },
+      {
+        "sentence": "- A phase is a part of a system with its own properties",
+        "grounded": true,
+        "match_ratio": 1.0
+      },
+      {
+        "sentence": "- Components are substances that can vary separately within a system",
+        "grounded": true,
+        "match_ratio": 0.8
+      }
+    ]
+  },
+  "audio_url": "http://localhost:8000/outputs/Chemistry_important_questions_-2_English_audio.mp3"
+}
