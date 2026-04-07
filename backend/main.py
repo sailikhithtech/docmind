@@ -8,7 +8,7 @@ from datetime import datetime
 
 from extractor import extract_text
 from summarizer import summarize, AVAILABLE_MODELS
-from rag import build_index, chat_with_doc
+from rag import build_index, chat_with_docs
 from hallucination import check_hallucination
 from tts import convert_to_audio
 
@@ -97,12 +97,13 @@ async def upload_pdf(file: UploadFile = File(...)):
     chunk_count = build_index(text, file.filename)
 
     return {
-        "filename": file.filename,
-        "status": "success",
-        "message": "File uploaded and indexed successfully",
-        "word_count": len(text.split()),
-        "chunks_indexed": chunk_count
-    }
+    "filename": file.filename,
+    "status": "success",
+    "message": "File uploaded and indexed successfully",
+    "word_count": len(text.split()),
+    "characters": len(text),
+    "chunks_indexed": chunk_count
+}
 
 
 @app.post("/summarize")
@@ -158,20 +159,17 @@ async def summarize_document(
 
 
 @app.post("/chat")
-async def chat(filename: str, question: str):
+async def chat(question: str):
+
     if not question.strip():
         raise HTTPException(
             status_code=400,
             detail="Question cannot be empty"
         )
 
-    answer = chat_with_doc(filename, question)
+    result = chat_with_docs(question)
 
-    return {
-        "question": question,
-        "answer": answer,
-        "filename": filename
-    }
+    return result
 
 
 @app.post("/listen")
@@ -262,3 +260,11 @@ async def delete_audio_record(audio_id: int):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/documents")
+def list_documents():
+
+    files = os.listdir(UPLOADS_PATH)
+
+    return {"documents": files}

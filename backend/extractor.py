@@ -1,17 +1,23 @@
 import fitz  # PyMuPDF
 
+
 def extract_text(path):
     """
-    Opens the PDF and extracts all text
-    from every page
+    Extracts text from a PDF file page by page
+    and returns a single combined text string.
+    Empty pages are ignored.
     """
 
     doc = fitz.open(path)
 
     pages = []
 
-    for page in doc:
-        pages.append(page.get_text("text"))
+    for page_number, page in enumerate(doc, start=1):
+
+        text = page.get_text("text")
+
+        if text.strip():  # skip empty pages
+            pages.append(text)
 
     doc.close()
 
