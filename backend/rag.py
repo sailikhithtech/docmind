@@ -81,12 +81,16 @@ def chat_with_docs(question):
         history_text += f"User: {item['question']}\nAI: {item['answer']}\n"
 
     prompt = f"""
-You are an AI assistant that answers questions using uploaded documents.
+You are an AI document assistant.
 
-Use ONLY the document context and conversation history to answer.
+Answer the user's question using ONLY the information from the document context.
 
-If the answer cannot be found in the documents say exactly:
-"I could not find this information in the documents."
+Rules for formatting:
+1. Write clear and easy-to-read explanations.
+2. Use short paragraphs or numbered points when helpful.
+3. Do NOT use LaTeX symbols like \\( \\), \\text{{}}, or mathematical markup.
+4. Write equations in plain text form.
+5. Avoid unnecessary symbols or special formatting.
 
 Conversation History:
 {history_text}
@@ -94,10 +98,10 @@ Conversation History:
 Document Context:
 {context}
 
-Question:
+User Question:
 {question}
 
-Answer clearly and concisely.
+Answer:
 """
 
     try:
@@ -119,6 +123,8 @@ Answer clearly and concisely.
         result = response.json()
 
         answer = result.get("response", "No response received")
+        answer = answer.replace("\\(", "").replace("\\)", "")
+        answer = answer.replace("\\text{", "").replace("}", "")
 
         # Save conversation history
         conversation_history.append({
