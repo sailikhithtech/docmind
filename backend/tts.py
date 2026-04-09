@@ -25,6 +25,7 @@ def convert_to_audio(text, filename, language="English", audio_type="document"):
         else:
             output_path = f"C:/Users/SAILIKHITH/OneDrive/Desktop/docmind/outputs/{clean_name}_{language}_audio.mp3"
 
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         tts = gTTS(text=text[:3000], lang=lang_code, slow=False)
         tts.save(output_path)
 
