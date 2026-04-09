@@ -2,6 +2,34 @@ import { useState, useRef, useEffect, useCallback } from "react"
 
 const API = "http://localhost:8000"
 
+let authToken = localStorage.getItem("docmind_token") || ""
+
+const setAuthToken = (token) => {
+  authToken = token
+  if (token) localStorage.setItem("docmind_token", token)
+  else localStorage.removeItem("docmind_token")
+}
+
+const authFetch = async (url, options = {}) => {
+  const headers = options.headers || {}
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`
+  
+  if (options.body instanceof FormData) {
+    // browser sets content-type automatically
+  } else if (!headers["Content-Type"]) {
+    // defaults to JSON if no body or body isn't formdata
+  }
+  
+  options.headers = headers
+  const res = await window.fetch(url, options)
+  if (res.status === 401) {
+    setAuthToken("")
+    window.location.reload()
+  }
+  return res
+}
+
+
 // ─── Toast ───────────────────────────────────────────────
 function Toast({ message, type, onClose }) {
   useEffect(() => {
@@ -53,7 +81,7 @@ function ListenButton({ filename }) {
     setLoading(true)
     setAudioUrl(null)
     try {
-      const res = await fetch(`${API}/listen?filename=${encodeURIComponent(filename)}&language=${language}`, { method: "POST" })
+      const res = await authFetch(`${API}/listen?filename=${encodeURIComponent(filename)}&language=${language}`, { method: "POST" })
       const data = await res.json()
       if (data.audio_url) {
         setAudioUrl(data.audio_url)
@@ -114,7 +142,7 @@ function SummaryHistoryPage({ showToast, onBack }) {
   const fetchHistory = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API}/summary-history`)
+      const res = await authFetch(`${API}/summary-history`)
       const data = await res.json()
       setHistory(data.history || [])
     } catch {
@@ -129,7 +157,7 @@ function SummaryHistoryPage({ showToast, onBack }) {
 
   const deleteRecord = async (id) => {
     try {
-      await fetch(`${API}/summary-history/${id}`, { method: "DELETE" })
+      await authFetch(`${API}/summary-history/${id}`, { method: "DELETE" })
       setHistory(h => h.filter(item => item.id !== id))
       setConfirmDelete(null)
       showToast("Summary record deleted", "success")
@@ -417,8 +445,8 @@ function HistoryPage({ showToast }) {
     setLoading(true)
     try {
       const [sRes, aRes] = await Promise.all([
-        fetch(`${API}/summary-history`),
-        fetch(`${API}/audio-history`)
+        authFetch(`${API}/summary-history`),
+        authFetch(`${API}/audio-history`)
       ])
       const sData = await sRes.json()
       const aData = await aRes.json()
@@ -436,7 +464,7 @@ function HistoryPage({ showToast }) {
 
   const deleteSummary = async (id) => {
     try {
-      await fetch(`${API}/summary-history/${id}`, { method: "DELETE" })
+      await authFetch(`${API}/summary-history/${id}`, { method: "DELETE" })
       setSummaries(h => h.filter(i => i.id !== id))
       setConfirmDelete(null)
       showToast("Summary deleted", "success")
@@ -445,7 +473,7 @@ function HistoryPage({ showToast }) {
 
   const deleteAudio = async (id) => {
     try {
-      await fetch(`${API}/audio-history/${id}`, { method: "DELETE" })
+      await authFetch(`${API}/audio-history/${id}`, { method: "DELETE" })
       setAudios(h => h.filter(i => i.id !== id))
       setConfirmDelete(null)
       showToast("Audio record deleted", "success")
@@ -805,19 +833,19 @@ function UploadPage({ onComplete, showToast, onHistory }) {
       if (files.length === 1) {
         const singleForm = new FormData()
         singleForm.append("file", files[0])
-        upRes = await fetch(`${API}/upload`, { method: "POST", body: singleForm })
+        upRes = await authFetch(`${API}/upload`, { method: "POST", body: singleForm })
         if (!upRes.ok) { const err = await upRes.json(); throw new Error(err.detail || "Upload failed") }
         const upData = await upRes.json()
         setUploadProgress({ current: 1, total: 1 })
 
         setLoadingMsg("Generating AI summary — this takes 20-40 seconds...")
-        const sumRes = await fetch(`${API}/summarize?filename=${encodeURIComponent(upData.filename)}&persona=${persona}&model=best`, { method: "POST" })
+        const sumRes = await authFetch(`${API}/summarize?filename=${encodeURIComponent(upData.filename)}&persona=${persona}&model=best`, { method: "POST" })
         if (!sumRes.ok) { const err = await sumRes.json(); throw new Error(err.detail || "Summarization failed") }
         const sumData = await sumRes.json()
         clearInterval(interval)
         onComplete(sumData, upData.filename, persona, [upData.filename])
       } else {
-        upRes = await fetch(`${API}/upload-multiple`, { method: "POST", body: formData })
+        upRes = await authFetch(`${API}/upload-multiple`, { method: "POST", body: formData })
         if (!upRes.ok) { const err = await upRes.json(); throw new Error(err.detail || "Upload failed") }
         const upData = await upRes.json()
         const uploadedFiles = upData.results.map(r => r.filename)
@@ -828,12 +856,17 @@ function UploadPage({ onComplete, showToast, onHistory }) {
         }
         if (uploadedFiles.length === 0) throw new Error("No files were successfully processed")
 
-        setLoadingMsg(`Generating AI summary for ${uploadedFiles[0]} — this takes 20-40 seconds...`)
-        const sumRes = await fetch(`${API}/summarize?filename=${encodeURIComponent(uploadedFiles[0])}&persona=${persona}&model=best`, { method: "POST" })
-        if (!sumRes.ok) { const err = await sumRes.json(); throw new Error(err.detail || "Summarization failed") }
+        // ── Combined summary: merge ALL uploaded docs into one summary ──
+        setLoadingMsg(`Analyzing ${uploadedFiles.length} documents together — generating combined summary...`)
+        const joinedNames = uploadedFiles.map(encodeURIComponent).join(",")
+        const sumRes = await authFetch(
+          `${API}/summarize-combined?filenames=${joinedNames}&persona=${persona}&model=best`,
+          { method: "POST" }
+        )
+        if (!sumRes.ok) { const err = await sumRes.json(); throw new Error(err.detail || "Combined summarization failed") }
         const sumData = await sumRes.json()
         clearInterval(interval)
-        onComplete(sumData, uploadedFiles[0], persona, uploadedFiles)
+        onComplete(sumData, sumData.filename, persona, uploadedFiles)
       }
     } catch (err) {
       clearInterval(interval); setLoading(false)
@@ -960,6 +993,36 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
   const audioRef = useRef()
   const activesentenceRef = useRef()
 
+  // ── Audio readiness polling ──────────────────────────────
+  const [audioReady, setAudioReady] = useState(false)
+  const [audioUrl, setAudioUrl] = useState(null)
+  const audioPollRef = useRef(null)
+
+  // Start polling when user switches to the audio tab
+  useEffect(() => {
+    if (activeTab !== "audio") return
+    // Already confirmed ready — no need to poll again
+    if (audioReady) return
+
+    const poll = async () => {
+      try {
+        const res = await authFetch(
+          `${API}/audio-status?filename=${encodeURIComponent(filename)}&audio_type=summary&language=English`
+        )
+        const d = await res.json()
+        if (d.ready) {
+          setAudioReady(true)
+          setAudioUrl(d.audio_url)
+          clearInterval(audioPollRef.current)
+        }
+      } catch { /* backend not responding — keep polling */ }
+    }
+
+    poll() // immediate first check
+    audioPollRef.current = setInterval(poll, 2000)
+    return () => clearInterval(audioPollRef.current)
+  }, [activeTab, audioReady, filename])
+
   // Split summary into sentences for highlighting
   const sentences = (data.summary || "").split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0)
   const totalChars = sentences.reduce((a, s) => a + s.length, 0)
@@ -1012,12 +1075,13 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
     setChatHistory(h => [...h, { role: "user", text: q }])
     setChatLoading(true)
     try {
-      const res = await fetch(`${API}/chat?filename=${encodeURIComponent(filename)}&question=${encodeURIComponent(q)}`, { method: "POST" })
+      const res = await authFetch(`${API}/chat?filename=${encodeURIComponent(filename)}&question=${encodeURIComponent(q)}`, { method: "POST" })
       const d = await res.json()
-      setChatHistory(h => [...h, { role: "ai", text: d.answer }])
+      // Store sources alongside the answer so the UI can show which doc(s) were used
+      setChatHistory(h => [...h, { role: "ai", text: d.answer, sources: d.sources || [] }])
     } catch {
       showToast("Chat failed. Make sure backend is running.", "error")
-      setChatHistory(h => [...h, { role: "ai", text: "Sorry, I could not get a response. Please try again." }])
+      setChatHistory(h => [...h, { role: "ai", text: "Sorry, I could not get a response. Please try again.", sources: [] }])
     }
     setChatLoading(false)
   }
@@ -1039,7 +1103,7 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
     if (newFilename === filename || switchLoading) return
     setSwitchLoading(true)
     try {
-      const sumRes = await fetch(`${API}/summarize?filename=${encodeURIComponent(newFilename)}&persona=${persona}&model=best`, { method: "POST" })
+      const sumRes = await authFetch(`${API}/summarize?filename=${encodeURIComponent(newFilename)}&persona=${persona}&model=best`, { method: "POST" })
       if (!sumRes.ok) { const err = await sumRes.json(); throw new Error(err.detail || "Summarization failed") }
       const sumData = await sumRes.json()
       onSwitchDoc(sumData, newFilename)
@@ -1061,8 +1125,13 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
       )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 32px", borderBottom: "1px solid var(--border)", background: "rgba(8,11,18,0.8)", backdropFilter: "blur(20px)", position: "sticky", top: 0, zIndex: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20 }}>📄</span>
-          {allFiles && allFiles.length > 1 ? (
+          <span style={{ fontSize: 20 }}>{data.combined ? "📚" : "📄"}</span>
+          {data.combined ? (
+            <>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14 }}>Combined Summary</span>
+              <span style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.4)", color: "var(--purple)", padding: "2px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>📚 {data.doc_count} docs merged</span>
+            </>
+          ) : allFiles && allFiles.length > 1 ? (
             <select value={filename} onChange={e => handleSwitchDoc(e.target.value)} style={{
               fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14,
               background: "var(--bg3)", color: "var(--text)", border: "1px solid var(--border)",
@@ -1074,7 +1143,7 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
           ) : (
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</span>
           )}
-          {allFiles && allFiles.length > 1 && (
+          {!data.combined && allFiles && allFiles.length > 1 && (
             <span style={{ background: "var(--blue-dim)", border: "1px solid var(--blue-glow)", color: "var(--blue)", padding: "2px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>{allFiles.length} docs</span>
           )}
         </div>
@@ -1103,6 +1172,23 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
 
         {activeTab === "summary" && (
           <div style={{ animation: "fadeIn 0.3s ease" }}>
+            {/* Combined-summary banner */}
+            {data.combined && (
+              <div style={{
+                background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.3)",
+                borderRadius: 14, padding: "16px 22px", marginBottom: 20,
+                display: "flex", alignItems: "flex-start", gap: 14, animation: "fadeUp 0.4s ease"
+              }}>
+                <span style={{ fontSize: 28, flexShrink: 0 }}>📚</span>
+                <div>
+                  <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, color: "var(--purple)", marginBottom: 6 }}>Combined Document Summary</div>
+                  <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6 }}>
+                    This summary was generated by analyzing <strong style={{ color: "var(--text)" }}>{data.doc_count} documents together</strong>:
+                    &nbsp;{(data.filenames || []).join(" · ")}
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 28, marginBottom: 24 }}>
               <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, color: "var(--text-dim)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 16 }}>AI Summary</div>
               <p style={{ lineHeight: 1.8, fontSize: 15, color: "var(--text)", whiteSpace: "pre-wrap" }}>{data.summary}</p>
@@ -1126,18 +1212,53 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
 
         {activeTab === "chat" && (
           <div style={{ animation: "fadeIn 0.3s ease", height: "calc(100vh - 260px)", display: "flex", flexDirection: "column" }}>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Chat with your document</div>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18 }}>
+                {data.combined ? "Chat with all documents" : "Chat with your document"}
+              </div>
+              {data.combined && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {(data.filenames || []).map(f => (
+                    <span key={f} style={{
+                      background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.3)",
+                      color: "var(--purple)", padding: "2px 10px", borderRadius: 100,
+                      fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 600
+                    }}>📄 {f}</span>
+                  ))}
+                </div>
+              )}
+            </div>
             <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16, marginBottom: 16, paddingRight: 4 }}>
               {chatHistory.length === 0 && (
                 <div style={{ textAlign: "center", color: "var(--text-dimmer)", marginTop: 60 }}>
                   <div style={{ fontSize: 48, marginBottom: 16 }}>💬</div>
-                  <div style={{ fontSize: 15 }}>Ask anything about your document</div>
+                  <div style={{ fontSize: 15 }}>
+                    {data.combined
+                      ? `Ask anything — answers will draw from all ${data.doc_count} documents`
+                      : "Ask anything about your document"}
+                  </div>
                 </div>
               )}
               {chatHistory.map((m, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", animation: "slideIn 0.3s ease" }}>
                   {m.role === "ai" && (<div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--purple-dim)", border: "1px solid var(--purple)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, marginRight: 10, flexShrink: 0, marginTop: 4 }}>🤖</div>)}
-                  <div style={{ maxWidth: "70%", padding: "12px 16px", borderRadius: 14, background: m.role === "user" ? "var(--blue)" : "var(--card)", border: m.role === "user" ? "none" : "1px solid var(--border)", fontSize: 14, lineHeight: 1.7, borderTopRightRadius: m.role === "user" ? 4 : 14, borderTopLeftRadius: m.role === "ai" ? 4 : 14 }}>{m.text}</div>
+                  <div style={{ maxWidth: "70%" }}>
+                    <div style={{ padding: "12px 16px", borderRadius: 14, background: m.role === "user" ? "var(--blue)" : "var(--card)", border: m.role === "user" ? "none" : "1px solid var(--border)", fontSize: 14, lineHeight: 1.7, borderTopRightRadius: m.role === "user" ? 4 : 14, borderTopLeftRadius: m.role === "ai" ? 4 : 14 }}>{m.text}</div>
+                    {/* Source pills — only on AI messages with multiple sources */}
+                    {m.role === "ai" && m.sources && m.sources.length > 0 && (
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6, paddingLeft: 2 }}>
+                        <span style={{ fontSize: 10, color: "var(--text-dimmer)", fontFamily: "var(--font-display)", fontWeight: 600, alignSelf: "center" }}>Sources:</span>
+                        {m.sources.map(src => (
+                          <span key={src} style={{
+                            background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)",
+                            color: "var(--blue)", padding: "1px 8px", borderRadius: 100,
+                            fontSize: 10, fontFamily: "var(--font-display)", fontWeight: 600
+                          }}>📄 {src}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
               {chatLoading && (
@@ -1151,7 +1272,9 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
               <div ref={chatEndRef} />
             </div>
             <div style={{ display: "flex", gap: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 14, padding: "8px 8px 8px 16px" }}>
-              <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendChat()} placeholder="Ask anything about your document..." style={{ flex: 1, background: "none", border: "none", color: "var(--text)", fontSize: 14 }} />
+              <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendChat()}
+                placeholder={data.combined ? `Ask across all ${data.doc_count} documents...` : "Ask anything about your document..."}
+                style={{ flex: 1, background: "none", border: "none", color: "var(--text)", fontSize: 14 }} />
               <button onClick={sendChat} disabled={!chatInput.trim() || chatLoading} style={{ background: chatInput.trim() ? "var(--blue)" : "var(--bg3)", color: chatInput.trim() ? "#fff" : "var(--text-dimmer)", padding: "10px 20px", borderRadius: 10, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 13, transition: "all 0.2s" }}>Send →</button>
             </div>
           </div>
@@ -1197,30 +1320,34 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
                   <div style={{ fontSize: 44, marginBottom: 20 }}>🔊</div>
                   <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 6 }}>Audio Summary</div>
                   <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 24, lineHeight: 1.6 }}>Listen to your {persona} summary</div>
-                  {data.audio_url ? (
-                    <>
+                  {audioReady && audioUrl ? (
+                    <div style={{ animation: "fadeIn 0.4s ease" }}>
                       <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 12, color: "var(--text-dimmer)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>AI Generated Audio</div>
                       <audio
                         ref={audioRef}
-                        src={data.audio_url}
+                        src={audioUrl}
                         style={{ width: "100%", marginBottom: 16 }}
                         controls
                         onTimeUpdate={handleAudioTimeUpdate}
                         onPause={handleAudioPause}
                         onEnded={handleAudioEnd}
                       />
-                      <a href={data.audio_url} download style={{
+                      <a href={audioUrl} download style={{
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                         width: "100%", background: "var(--blue-dim)", border: "1px solid var(--blue-glow)",
                         color: "var(--blue)", padding: "12px", borderRadius: 10, fontSize: 14,
                         fontFamily: "var(--font-display)", fontWeight: 600, textDecoration: "none",
                         transition: "all 0.2s"
                       }}>⬇ Download Summary Audio</a>
-                    </>
+                    </div>
                   ) : (
-                    <div style={{ color: "var(--text-dimmer)", fontSize: 14, background: "var(--bg3)", borderRadius: 10, padding: 24, lineHeight: 1.6 }}>
-                      <div style={{ fontSize: 28, marginBottom: 12 }}>⏳</div>
-                      Audio is being generated in the background. Refresh in a few seconds.
+                    <div style={{ color: "var(--text-dim)", fontSize: 14, background: "var(--bg3)", borderRadius: 12, padding: "28px 20px", lineHeight: 1.6 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid var(--border)", borderTop: "2px solid var(--blue)", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
+                      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, marginBottom: 6, color: "var(--text)" }}>Generating Audio...</div>
+                      <div style={{ fontSize: 13, color: "var(--text-dimmer)" }}>Your summary is being converted to speech. This usually takes 5–15 seconds.</div>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 18 }}>
+                        {[0, 1, 2].map(i => (<div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: `pulse 1.2s ${i * 0.2}s ease infinite` }} />))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1293,6 +1420,76 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
   )
 }
 
+// ─── Auth Page ────────────────────────────────────────────
+function AuthPage({ onLogin }) {
+  const [isLogin, setIsLogin] = useState(true)
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    const url = isLogin ? `${API}/auth/login` : `${API}/auth/register`
+    const body = isLogin ? { email, password } : { name, email, password }
+    try {
+      const res = await authFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || "Authentication failed")
+      
+      if (!isLogin) {
+        setIsLogin(true)
+        alert("Registration successful. Please log in.")
+      } else {
+        onLogin(data.access_token, data.user)
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, padding: 20 }}>
+      <div style={{ background: "rgba(8,11,18,0.8)", padding: 40, borderRadius: 24, border: "1px solid var(--border)", width: 400, maxWidth: "100%", animation: "fadeUp 0.4s ease", backdropFilter: "blur(20px)" }}>
+        <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 28, marginBottom: 8, textAlign: "center" }}>{isLogin ? "Welcome Back" : "Create Account"}</h2>
+        <p style={{ textAlign: "center", color: "var(--text-dim)", marginBottom: 32 }}>{isLogin ? "Sign in to access your document workspace" : "Get started with your private workspace"}</p>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {!isLogin && (
+            <input required placeholder="Full Name" value={name} onChange={e => setName(e.target.value)}
+              style={{ padding: "14px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text)" }} />
+          )}
+          <input required type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)}
+            style={{ padding: "14px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text)" }} />
+          <input required type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)}
+            style={{ padding: "14px", borderRadius: 12, background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text)" }} />
+          
+          <button disabled={loading} style={{
+            marginTop: 8, padding: "14px", borderRadius: 12, border: "none",
+            background: "linear-gradient(135deg, var(--blue), var(--purple))", color: "#fff",
+            fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, cursor: "pointer"
+          }}>
+            {loading ? "Processing..." : (isLogin ? "Log In" : "Register")}
+          </button>
+        </form>
+        <div style={{ textAlign: "center", marginTop: 24, fontSize: 14 }}>
+          <span style={{ color: "var(--text-dim)" }}>
+            {isLogin ? "Don't have an account?" : "Already have an account?"}
+          </span>
+          <button onClick={() => setIsLogin(!isLogin)} style={{ background: "none", border: "none", color: "var(--blue)", fontWeight: 600, marginLeft: 8, cursor: "pointer" }}>
+            {isLogin ? "Register" : "Log In"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── App Root ─────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("landing")
@@ -1301,6 +1498,43 @@ export default function App() {
   const [persona, setPersona] = useState("")
   const [allFiles, setAllFiles] = useState([])
   const [toast, setToast] = useState(null)
+
+  // Auth State
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem("docmind_user")
+    return saved ? JSON.parse(saved) : null
+  })
+
+  useEffect(() => {
+    if (authToken && !user) {
+      authFetch(`${API}/auth/me`)
+        .then(res => {
+          if (res.ok) { return res.json(); }
+          throw new Error("Invalid token");
+        })
+        .then(data => {
+            setUser({ name: data.name, email: data.email })
+            localStorage.setItem("docmind_user", JSON.stringify({ name: data.name, email: data.email }))
+        }).catch(() => {
+            setAuthToken("")
+            setUser(null)
+            localStorage.removeItem("docmind_user")
+        });
+    }
+  }, []);
+
+  const handleLogin = (token, userData) => {
+    setAuthToken(token)
+    setUser(userData)
+    localStorage.setItem("docmind_user", JSON.stringify(userData))
+  }
+
+  const handleLogout = () => {
+    setAuthToken("")
+    setUser(null)
+    localStorage.removeItem("docmind_user")
+    setPage("landing")
+  }
 
   const showToast = (message, type = "info") => setToast({ message, type, id: Date.now() })
 
@@ -1316,10 +1550,25 @@ export default function App() {
     setResultData(null); setFilename(""); setPersona(""); setAllFiles([]); setPage("upload")
   }
 
+  if (!authToken) {
+    return (
+      <>
+        <Background />
+        <AuthPage onLogin={handleLogin} />
+      </>
+    )
+  }
+
   return (
     <>
       <Background />
       {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+
+      {/* Persistent Auth Header */}
+      <div style={{ position: "fixed", top: 20, right: 24, zIndex: 1000, display: "flex", alignItems: "center", gap: 16 }}>
+        {user && <span style={{ color: "var(--text)", fontSize: 14, fontFamily: "var(--font-display)", fontWeight: 600, background: "rgba(8,11,18,0.5)", padding: "6px 12px", borderRadius: 8, backdropFilter: "blur(10px)" }}>👤 {user.name}</span>}
+        <button onClick={handleLogout} style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--red)", padding: "6px 16px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)" }} onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.15)" }}>Logout</button>
+      </div>
 
       {page === "landing" && <LandingPage onStart={() => setPage("upload")} />}
       {page === "upload" && <UploadPage onComplete={handleComplete} showToast={showToast} onHistory={() => setPage("history")} />}

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +7,9 @@ import os
 import json
 from datetime import datetime
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from extractor import extract_text
 from summarizer import summarize, AVAILABLE_MODELS
@@ -15,12 +18,13 @@ from hallucination import check_hallucination
 from tts import convert_to_audio
 from translator import translate_text
 
+from database import get_db, User, AudioHistory, SummaryHistory
+from auth import verify_password, get_password_hash, create_access_token, get_current_user, timedelta, ACCESS_TOKEN_EXPIRE_MINUTES
+
 # ── Project paths ──────────────────────────────────────────
 PROJECT_PATH = "C:/Users/SAILIKHITH/OneDrive/Desktop/docmind"
 UPLOADS_PATH = f"{PROJECT_PATH}/uploads"
 OUTPUTS_PATH = f"{PROJECT_PATH}/outputs"
-HISTORY_FILE = f"{OUTPUTS_PATH}/audio_history.json"
-SUMMARY_HISTORY_FILE = f"{OUTPUTS_PATH}/summary_history.json"
 
 os.makedirs(UPLOADS_PATH, exist_ok=True)
 os.makedirs(OUTPUTS_PATH, exist_ok=True)
@@ -43,65 +47,41 @@ app.mount(
     name="outputs"
 )
 
+# Auth schemas
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    password: str
 
-# ── Helper: Save audio to history ─────────────────────────
-def save_audio_history(filename, language, audio_url):
-    try:
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, "r") as f:
-                history = json.load(f)
-        else:
-            history = []
+class UserLogin(BaseModel):
+    email: str
+    password: str
 
-        entry = {
-            "id": len(history) + 1,
-            "filename": filename.replace(".pdf", ""),
-            "language": language,
-            "date": datetime.now().strftime("%d-%m-%Y %I:%M %p"),
-            "audio_url": audio_url
-        }
-        history.insert(0, entry)
+@app.post("/auth/register")
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == user.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_password = get_password_hash(user.password)
+    new_user = User(name=user.name, email=user.email, hashed_password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    return {"message": "User registered successfully"}
 
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=2)
+@app.post("/auth/login")
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if not db_user or not verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid email or password")
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(data={"sub": db_user.email}, expires_delta=access_token_expires)
+    return {"access_token": access_token, "token_type": "bearer", "user": {"name": db_user.name, "email": db_user.email}}
 
-        return entry
-    except Exception as e:
-        print(f"History save error: {str(e)}")
-        return None
-
-
-# ── Helper: Save summary to history ────────────────────────
-def save_summary_history(filename, persona, model_used, summary, hallucination, audio_url):
-    try:
-        if os.path.exists(SUMMARY_HISTORY_FILE):
-            with open(SUMMARY_HISTORY_FILE, "r") as f:
-                history = json.load(f)
-        else:
-            history = []
-
-        entry = {
-            "id": int(datetime.now().timestamp() * 1000),
-            "filename": filename,
-            "persona": persona,
-            "model_used": model_used,
-            "summary": summary,
-            "hallucination": hallucination,
-            "audio_url": audio_url,
-            "date": datetime.now().strftime("%d-%m-%Y %I:%M %p")
-        }
-        history.insert(0, entry)
-
-        with open(SUMMARY_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=2)
-
-        return entry
-    except Exception as e:
-        print(f"Summary history save error: {str(e)}")
-        return None
+@app.get("/auth/me")
+def read_users_me(current_user: User = Depends(get_current_user)):
+    return {"email": current_user.email, "name": current_user.name, "id": current_user.id}
 
 
-# ── Routes ─────────────────────────────────────────────────
 @app.get("/")
 def home():
     return {
@@ -110,81 +90,90 @@ def home():
         "status": "healthy"
     }
 
-
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are allowed"
-        )
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    save_path = f"{UPLOADS_PATH}/{file.filename}"
+    user_folder = f"{UPLOADS_PATH}/{current_user.id}"
+    os.makedirs(user_folder, exist_ok=True)
+    save_path = f"{user_folder}/{file.filename}"
+    
     with open(save_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
     text = extract_text(save_path)
 
     if not text.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Could not extract text. File may be scanned or image-based."
-        )
+        raise HTTPException(status_code=400, detail="Could not extract text. File may be scanned or image-based.")
 
-    # Cache the extracted text
-    text_cache[file.filename] = text
-
-    chunk_count = build_index(text, file.filename)
+    text_cache[f"{current_user.id}_{file.filename}"] = text
+    chunk_count = build_index(text, file.filename, current_user.id)
 
     return {
-    "filename": file.filename,
-    "status": "success",
-    "message": "File uploaded and indexed successfully",
-    "word_count": len(text.split()),
-    "characters": len(text),
-    "chunks_indexed": chunk_count
-}
+        "filename": file.filename,
+        "status": "success",
+        "message": "File uploaded and indexed successfully",
+        "word_count": len(text.split()),
+        "characters": len(text),
+        "chunks_indexed": chunk_count
+    }
 
 
 @app.post("/upload-multiple")
-async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
-    """Upload and index multiple PDF files at once"""
+async def upload_multiple_pdfs(files: List[UploadFile] = File(...), current_user: User = Depends(get_current_user)):
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
-    results = []
-    errors = []
-
+    raw_files = [] 
+    pre_errors = []
     for file in files:
-        try:
-            if not file.filename or not file.filename.lower().endswith(".pdf"):
-                errors.append({"filename": file.filename or "unknown", "error": "Not a PDF file"})
-                continue
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            pre_errors.append({"filename": file.filename or "unknown", "error": "Not a PDF file"})
+            continue
+        data = await file.read()
+        raw_files.append((file.filename, data))
 
-            save_path = f"{UPLOADS_PATH}/{file.filename}"
-            with open(save_path, "wb") as f:
-                shutil.copyfileobj(file.file, f)
+    if not raw_files and pre_errors:
+        raise HTTPException(status_code=400, detail=f"All files rejected: {pre_errors}")
 
-            text = extract_text(save_path)
+    user_folder = f"{UPLOADS_PATH}/{current_user.id}"
+    os.makedirs(user_folder, exist_ok=True)
 
-            if not text.strip():
-                errors.append({"filename": file.filename, "error": "Could not extract text. File may be scanned or image-based."})
-                continue
+    def save_and_extract(fname, data):
+        save_path = f"{user_folder}/{fname}"
+        with open(save_path, "wb") as fp:
+            fp.write(data)
+        text = extract_text(save_path)
+        return fname, text
 
-            # Cache extracted text
-            text_cache[file.filename] = text
+    results = []
+    errors = list(pre_errors)
 
-            chunk_count = build_index(text, file.filename)
+    with ThreadPoolExecutor(max_workers=min(4, len(raw_files))) as pool:
+        future_map = {pool.submit(save_and_extract, fname, data): fname for fname, data in raw_files}
+        extracted = {}
+        for future in as_completed(future_map):
+            fname = future_map[future]
+            try:
+                fname, text = future.result()
+                if not text.strip():
+                    errors.append({"filename": fname, "error": "Could not extract text. File may be scanned or image-based."})
+                else:
+                    extracted[fname] = text
+            except Exception as exc:
+                errors.append({"filename": fname, "error": str(exc)})
 
-            results.append({
-                "filename": file.filename,
-                "status": "success",
-                "word_count": len(text.split()),
-                "characters": len(text),
-                "chunks_indexed": chunk_count
-            })
-        except Exception as e:
-            errors.append({"filename": file.filename or "unknown", "error": str(e)})
+    for fname, text in extracted.items():
+        text_cache[f"{current_user.id}_{fname}"] = text
+        chunk_count = build_index(text, fname, current_user.id)
+        results.append({
+            "filename": fname,
+            "status": "success",
+            "word_count": len(text.split()),
+            "characters": len(text),
+            "chunks_indexed": chunk_count
+        })
 
     if not results and errors:
         raise HTTPException(
@@ -205,45 +194,46 @@ async def upload_multiple_pdfs(files: List[UploadFile] = File(...)):
 async def summarize_document(
     filename: str,
     persona: str,
-    model: str = "best"
+    model: str = "best",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    file_path = f"{UPLOADS_PATH}/{filename}"
+    user_folder = f"{UPLOADS_PATH}/{current_user.id}"
+    user_out_folder = f"{OUTPUTS_PATH}/{current_user.id}"
+    os.makedirs(user_out_folder, exist_ok=True)
+    file_path = f"{user_folder}/{filename}"
 
     if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=404,
-            detail="File not found. Please upload the PDF first."
-        )
+        raise HTTPException(status_code=404, detail="File not found. Please upload the PDF first.")
 
     if persona not in ["Student", "Researcher", "Executive"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid persona. Choose Student, Researcher or Executive."
-        )
+        raise HTTPException(status_code=400, detail="Invalid persona.")
 
-    # Use cached text if available, otherwise extract
-    if filename in text_cache:
-        text = text_cache[filename]
+    cache_key = f"{current_user.id}_{filename}"
+    if cache_key in text_cache:
+        text = text_cache[cache_key]
     else:
         text = extract_text(file_path)
-        text_cache[filename] = text
+        text_cache[cache_key] = text
 
     summary = summarize(text, persona, model)
-
-    # Clean markdown symbols
     summary = summary.replace('#', '').replace('*', '').replace('`', '').strip()
 
     hallucination_result = check_hallucination(summary, text)
 
-    # Generate TTS in background thread (don't block the response)
     clean_name = filename.replace(".pdf", "").replace(" ", "_")
-    audio_url = f"http://localhost:8000/outputs/{clean_name}_summary_English_audio.mp3"
+    audio_url = f"http://localhost:8000/outputs/{current_user.id}/{clean_name}_summary_English_audio.mp3"
+    audio_filename_in_tts = f"{current_user.id}/{clean_name}_summary_English_audio.mp3"
 
     def bg_tts():
         try:
-            audio_path = convert_to_audio(summary, filename, "English", audio_type="summary")
+            audio_path = convert_to_audio(summary, f"{current_user.id}/{clean_name}", "English", audio_type="summary")
             if audio_path and os.path.exists(audio_path):
-                save_audio_history(filename, "English", audio_url)
+                from database import SessionLocal
+                with SessionLocal() as bg_db:
+                    hist = AudioHistory(user_id=current_user.id, filename=filename, language="English", audio_url=audio_url, date=datetime.now().strftime("%d-%m-%Y %I:%M %p"))
+                    bg_db.add(hist)
+                    bg_db.commit()
         except Exception as e:
             print(f"Background TTS error: {e}")
 
@@ -258,77 +248,165 @@ async def summarize_document(
         "audio_url": audio_url
     }
 
-    json_path = f"{OUTPUTS_PATH}/{filename.replace('.pdf', '')}_result.json"
+    json_path = f"{user_out_folder}/{filename.replace('.pdf', '')}_result.json"
     with open(json_path, "w") as f:
         json.dump(result, f, indent=2)
 
-    # Save to summary history
-    save_summary_history(filename, persona, result["model_used"], summary, hallucination_result, audio_url)
+    hist = SummaryHistory(user_id=current_user.id, filename=filename, persona=persona, model_used=result["model_used"], summary=summary, hallucination=json.dumps(hallucination_result), audio_url=audio_url, date=datetime.now().strftime("%d-%m-%Y %I:%M %p"))
+    db.add(hist)
+    db.commit()
+
+    return result
+
+
+@app.post("/summarize-combined")
+async def summarize_combined(
+    filenames: str,
+    persona: str,
+    model: str = "best",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if persona not in ["Student", "Researcher", "Executive"]:
+        raise HTTPException(status_code=400, detail="Invalid persona.")
+
+    name_list = [n.strip() for n in filenames.split(",") if n.strip()]
+    if not name_list:
+        raise HTTPException(status_code=400, detail="No filenames provided.")
+
+    user_folder = f"{UPLOADS_PATH}/{current_user.id}"
+    user_out_folder = f"{OUTPUTS_PATH}/{current_user.id}"
+    os.makedirs(user_out_folder, exist_ok=True)
+
+    cached = {}
+    need_extract = []
+    for fname in name_list:
+        cache_key = f"{current_user.id}_{fname}"
+        if cache_key in text_cache:
+            cached[fname] = text_cache[cache_key]
+        else:
+            file_path = f"{user_folder}/{fname}"
+            if os.path.exists(file_path):
+                need_extract.append((fname, file_path))
+            else:
+                pass 
+
+    if need_extract:
+        def _extract(fname, path):
+            return fname, extract_text(path)
+
+        with ThreadPoolExecutor(max_workers=min(4, len(need_extract))) as pool:
+            futures = {pool.submit(_extract, fn, fp): fn for fn, fp in need_extract}
+            for future in as_completed(futures):
+                fname = futures[future]
+                try:
+                    fname, text = future.result()
+                    if text.strip():
+                        text_cache[f"{current_user.id}_{fname}"] = text
+                        cached[fname] = text
+                except Exception:
+                    pass
+
+    doc_texts = [(fn, cached[fn]) for fn in name_list if fn in cached]
+    missing = [fn for fn in name_list if fn not in cached]
+
+    if not doc_texts:
+        raise HTTPException(status_code=404, detail=f"Could not extract text from any file. Missing: {missing}")
+
+    separator = "\n\n" + ("─" * 60) + "\n\n"
+    merged_parts = []
+    for fname, txt in doc_texts:
+        label = f"[Document: {fname}]\n"
+        merged_parts.append(label + txt)
+    combined_text = separator.join(merged_parts)
+
+    combined_label = "_AND_".join(n.replace(".pdf", "").replace(" ", "_") for n in name_list)[:80]
+    
+    summary = summarize(combined_text, persona, model)
+    summary = summary.replace('#', '').replace('*', '').replace('`', '').strip()
+    hallucination_result = check_hallucination(summary, combined_text)
+
+    clean_name = combined_label
+    audio_url = f"http://localhost:8000/outputs/{current_user.id}/{clean_name}_summary_English_audio.mp3"
+
+    def bg_tts():
+        try:
+            audio_path = convert_to_audio(summary, f"{current_user.id}/{clean_name}", "English", audio_type="summary")
+            if audio_path and os.path.exists(audio_path):
+                from database import SessionLocal
+                with SessionLocal() as bg_db:
+                    hist = AudioHistory(user_id=current_user.id, filename=combined_label, language="English", audio_url=audio_url, date=datetime.now().strftime("%d-%m-%Y %I:%M %p"))
+                    bg_db.add(hist)
+                    bg_db.commit()
+        except Exception as e:
+            print(f"Background TTS error (combined): {e}")
+
+    threading.Thread(target=bg_tts, daemon=True).start()
+
+    result = {
+        "filename": combined_label,
+        "filenames": name_list,
+        "persona": persona,
+        "model_used": AVAILABLE_MODELS.get(model, "qwen2.5"),
+        "summary": summary,
+        "hallucination": hallucination_result,
+        "audio_url": audio_url,
+        "combined": True,
+        "doc_count": len(doc_texts),
+        "missing_files": missing
+    }
+
+    json_path = f"{user_out_folder}/{combined_label}_combined_result.json"
+    with open(json_path, "w") as f:
+        json.dump(result, f, indent=2)
+
+    hist = SummaryHistory(user_id=current_user.id, filename=f"{combined_label} ({len(doc_texts)} docs)", persona=persona, model_used=result["model_used"], summary=summary, hallucination=json.dumps(hallucination_result), audio_url=audio_url, date=datetime.now().strftime("%d-%m-%Y %I:%M %p"))
+    db.add(hist)
+    db.commit()
 
     return result
 
 
 @app.post("/chat")
-async def chat(question: str):
-
+async def chat(question: str, current_user: User = Depends(get_current_user)):
     if not question.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Question cannot be empty"
-        )
-
-    result = chat_with_docs(question)
-
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    result = chat_with_docs(question, current_user.id)
     return result
 
 
 @app.post("/listen")
-async def listen_document(filename: str, language: str = "English"):
-    file_path = f"{UPLOADS_PATH}/{filename}"
+async def listen_document(filename: str, language: str = "English", current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user_folder = f"{UPLOADS_PATH}/{current_user.id}"
+    user_out_folder = f"{OUTPUTS_PATH}/{current_user.id}"
+    os.makedirs(user_out_folder, exist_ok=True)
+    file_path = f"{user_folder}/{filename}"
 
     if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=404,
-            detail="File not found. Please upload the PDF first."
-        )
+        raise HTTPException(status_code=404, detail="File not found")
 
-    if language not in ["English", "Hindi", "Telugu"]:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid language. Choose English, Hindi or Telugu."
-        )
-
-    # Use cached text if available
-    if filename in text_cache:
-        text = text_cache[filename]
+    cache_key = f"{current_user.id}_{filename}"
+    if cache_key in text_cache:
+        text = text_cache[cache_key]
     else:
         text = extract_text(file_path)
-        text_cache[filename] = text
+        text_cache[cache_key] = text
 
-    if not text.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Could not extract text from PDF."
-        )
-
-    # Translate text if not English
     audio_text = text
     if language != "English":
         audio_text = translate_text(text[:2500], language)
 
-    audio_path = convert_to_audio(audio_text, filename, language)
+    clean_name = filename.replace(".pdf", "").replace(" ", "_")
+    audio_path = convert_to_audio(audio_text, f"{current_user.id}/{clean_name}", language)
 
     if not audio_path:
-        raise HTTPException(
-            status_code=500,
-            detail="Audio generation failed. Please try again."
-        )
+        raise HTTPException(status_code=500, detail="Audio generation failed")
 
-    clean_name = filename.replace(".pdf", "").replace(" ", "_")
-    audio_url = f"http://localhost:8000/outputs/{clean_name}_{language}_audio.mp3"
+    audio_url = f"http://localhost:8000/outputs/{current_user.id}/{clean_name}_{language}_audio.mp3"
 
-    # Save to history
-    save_audio_history(filename, language, audio_url)
+    hist = AudioHistory(user_id=current_user.id, filename=filename, language=language, audio_url=audio_url, date=datetime.now().strftime("%d-%m-%Y %I:%M %p"))
+    db.add(hist)
+    db.commit()
 
     return {
         "filename": filename,
@@ -339,71 +417,50 @@ async def listen_document(filename: str, language: str = "English"):
 
 
 @app.get("/audio-history")
-async def get_audio_history():
-    """
-    Returns all saved audio records
-    """
-    try:
-        if not os.path.exists(HISTORY_FILE):
-            return {"history": []}
-
-        with open(HISTORY_FILE, "r") as f:
-            history = json.load(f)
-
-        return {"history": history}
-    except Exception as e:
-        return {"history": [], "error": str(e)}
+async def get_audio_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    histories = db.query(AudioHistory).filter(AudioHistory.user_id == current_user.id).order_by(AudioHistory.id.desc()).all()
+    return {"history": [{"id": h.id, "filename": h.filename.replace(".pdf", ""), "language": h.language, "date": h.date, "audio_url": h.audio_url} for h in histories]}
 
 
 @app.delete("/audio-history/{audio_id}")
-async def delete_audio_record(audio_id: int):
-    """
-    Deletes a specific audio record from history
-    """
-    try:
-        if not os.path.exists(HISTORY_FILE):
-            raise HTTPException(status_code=404, detail="No history found")
-
-        with open(HISTORY_FILE, "r") as f:
-            history = json.load(f)
-
-        history = [h for h in history if h["id"] != audio_id]
-
-        with open(HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=2)
-
-        return {"status": "deleted", "id": audio_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def delete_audio_record(audio_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    record = db.query(AudioHistory).filter(AudioHistory.id == audio_id, AudioHistory.user_id == current_user.id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="No history found")
+    db.delete(record)
+    db.commit()
+    return {"status": "deleted", "id": audio_id}
 
 
 @app.get("/summary-history")
-async def get_summary_history():
-    """Returns all saved summarization records"""
-    try:
-        if not os.path.exists(SUMMARY_HISTORY_FILE):
-            return {"history": []}
-        with open(SUMMARY_HISTORY_FILE, "r") as f:
-            history = json.load(f)
-        return {"history": history}
-    except Exception as e:
-        return {"history": [], "error": str(e)}
+async def get_summary_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    histories = db.query(SummaryHistory).filter(SummaryHistory.user_id == current_user.id).order_by(SummaryHistory.id.desc()).all()
+    return {"history": [{"id": h.id, "filename": h.filename, "persona": h.persona, "model_used": h.model_used, "summary": h.summary, "hallucination": json.loads(h.hallucination), "audio_url": h.audio_url, "date": h.date} for h in histories]}
 
 
 @app.delete("/summary-history/{record_id}")
-async def delete_summary_record(record_id: int):
-    """Deletes a specific summary record from history"""
-    try:
-        if not os.path.exists(SUMMARY_HISTORY_FILE):
-            raise HTTPException(status_code=404, detail="No history found")
-        with open(SUMMARY_HISTORY_FILE, "r") as f:
-            history = json.load(f)
-        history = [h for h in history if h["id"] != record_id]
-        with open(SUMMARY_HISTORY_FILE, "w") as f:
-            json.dump(history, f, indent=2)
-        return {"status": "deleted", "id": record_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def delete_summary_record(record_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    record = db.query(SummaryHistory).filter(SummaryHistory.id == record_id, SummaryHistory.user_id == current_user.id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="No history found")
+    db.delete(record)
+    db.commit()
+    return {"status": "deleted", "id": record_id}
+
+
+@app.get("/audio-status")
+def audio_status(filename: str, audio_type: str = "summary", language: str = "English", current_user: User = Depends(get_current_user)):
+    clean_name = filename.replace(".pdf", "").replace(" ", "_")
+    if audio_type == "summary":
+        file_path = f"{OUTPUTS_PATH}/{current_user.id}/{clean_name}_summary_{language}_audio.mp3"
+        audio_url = f"http://localhost:8000/outputs/{current_user.id}/{clean_name}_summary_{language}_audio.mp3"
+    else:
+        file_path = f"{OUTPUTS_PATH}/{current_user.id}/{clean_name}_{language}_audio.mp3"
+        audio_url = f"http://localhost:8000/outputs/{current_user.id}/{clean_name}_{language}_audio.mp3"
+
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        return {"ready": True, "audio_url": audio_url}
+    return {"ready": False}
 
 
 @app.get("/health")
@@ -412,8 +469,9 @@ def health_check():
 
 
 @app.get("/documents")
-def list_documents():
-
-    files = os.listdir(UPLOADS_PATH)
-
+def list_documents(current_user: User = Depends(get_current_user)):
+    user_folder = f"{UPLOADS_PATH}/{current_user.id}"
+    if not os.path.exists(user_folder):
+        return {"documents": []}
+    files = os.listdir(user_folder)
     return {"documents": files}
