@@ -38,7 +38,10 @@ def smart_truncate(text, max_chars=MAX_TEXT_CHARS):
     return head + "\n\n[... middle omitted ...]\n\n" + tail
 
 
-def call_llm(prompt, model, max_tokens=300):
+def call_llm(prompt, model, max_tokens=300, is_combined=False):
+    # For combined summaries, we allow significantly more context so all docs fit
+    ctx_size = 4096 if is_combined else 2048
+    
     response = requests.post(
         "http://localhost:11434/api/generate",
         json={
@@ -47,36 +50,54 @@ def call_llm(prompt, model, max_tokens=300):
             "stream": False,
             "options": {
                 "num_predict": max_tokens,
-                "temperature": 0.3,       # lower = more deterministic & faster
+                "temperature": 0.3,
                 "top_p": 0.8,
-                "num_ctx": 2048,          # reduced from 4096 → 2048 for speed
-                "top_k": 20,              # limits token candidates = faster sampling
+                "num_ctx": ctx_size,
+                "top_k": 20,
             }
         },
-        timeout=120                       # reduced timeout from 180s → 120s
+        timeout=180
     )
 
     result = response.json()
     return result.get("response", "")
 
 
-def summarize(text, persona, model_preference="best"):
+def summarize(text, persona, model_preference="best", is_combined=False, doc_count=1):
 
     base_prompt = PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["Student"])
+    
+    overarching_instructions = ""
+    if is_combined:
+        overarching_instructions = f"""You are analyzing a collection of {doc_count} documents simultaneously. 
+CRITICAL: Generate a single, highly cohesive unified overview. 
+- Highlight common topics and overarching themes across all documents.
+- Merge overlapping ideas intelligently.
+- DO NOT list isolated document summaries one by one. Synthesize them.
+- {base_prompt}
+"""
+    else:
+        overarching_instructions = base_prompt
+
     model = AVAILABLE_MODELS.get(model_preference, "qwen2.5")
 
+    # For combined summaries, we want to allow significantly larger merged text 
+    # to maintain representation from all documents
+    max_chars = 12000 if is_combined else MAX_TEXT_CHARS
+    
     # Truncate to max allowed size
-    trimmed = smart_truncate(text, MAX_TEXT_CHARS)
+    trimmed = smart_truncate(text, max_chars)
 
     # Single-shot summary (most common path)
-    if len(trimmed) <= MAX_TEXT_CHARS:
-        prompt = f"""{base_prompt}
+    if len(trimmed) <= max_chars:
+        prompt = f"""{overarching_instructions}
 
-Document:
+Documents Text:
 {trimmed}
 
-Summary:"""
-        return call_llm(prompt, model, max_tokens=300)
+Unified Summary:"""
+        max_tokens = 600 if is_combined else 300
+        return call_llm(prompt, model, max_tokens=max_tokens, is_combined=is_combined)
 
     # Fallback: split into at most 2 chunks
     chunks = [trimmed[i:i + CHUNK_SIZE] for i in range(0, len(trimmed), CHUNK_SIZE)]
