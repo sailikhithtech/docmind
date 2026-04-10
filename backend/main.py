@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from extractor import extract_text
-from summarizer import summarize, AVAILABLE_MODELS
+from summarizer import summarize, AVAILABLE_MODELS, smart_truncate
 from rag import build_index, chat_with_docs
 from hallucination import check_hallucination
 from tts import convert_to_audio
@@ -245,7 +245,7 @@ async def summarize_document(
         "model_used": AVAILABLE_MODELS.get(model, "qwen2.5"),
         "summary": summary,
         "hallucination": hallucination_result,
-        "audio_url": audio_url
+        "audio_url": None  # Intentionally None so UI polls audio-status instead of rendering a broken player
     }
 
     json_path = f"{user_out_folder}/{filename.replace('.pdf', '')}_result.json"
@@ -313,16 +313,20 @@ async def summarize_combined(
     if not doc_texts:
         raise HTTPException(status_code=404, detail=f"Could not extract text from any file. Missing: {missing}")
 
+    # Allow up to 12000 chars total for combined, divide equally across documents
+    max_per_doc = 12000 // max(len(doc_texts), 1)
+
     separator = "\n\n" + ("─" * 60) + "\n\n"
     merged_parts = []
     for fname, txt in doc_texts:
         label = f"[Document: {fname}]\n"
-        merged_parts.append(label + txt)
+        truncated_txt = smart_truncate(txt, max_chars=max_per_doc)
+        merged_parts.append(label + truncated_txt)
     combined_text = separator.join(merged_parts)
 
     combined_label = "_AND_".join(n.replace(".pdf", "").replace(" ", "_") for n in name_list)[:80]
     
-    summary = summarize(combined_text, persona, model)
+    summary = summarize(combined_text, persona, model, is_combined=True, doc_count=len(doc_texts))
     summary = summary.replace('#', '').replace('*', '').replace('`', '').strip()
     hallucination_result = check_hallucination(summary, combined_text)
 
@@ -350,7 +354,7 @@ async def summarize_combined(
         "model_used": AVAILABLE_MODELS.get(model, "qwen2.5"),
         "summary": summary,
         "hallucination": hallucination_result,
-        "audio_url": audio_url,
+        "audio_url": None,  # Intentionally None so UI polls audio-status
         "combined": True,
         "doc_count": len(doc_texts),
         "missing_files": missing
@@ -367,11 +371,22 @@ async def summarize_combined(
     return result
 
 
+class ChatMessage(BaseModel):
+    role: str
+    text: str
+
+class ChatRequest(BaseModel):
+    question: str
+    history: List[ChatMessage] = []
+
 @app.post("/chat")
-async def chat(question: str, current_user: User = Depends(get_current_user)):
-    if not question.strip():
+async def chat(req: ChatRequest, current_user: User = Depends(get_current_user)):
+    if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
-    result = chat_with_docs(question, current_user.id)
+    
+    # Pass history exactly as a list of dicts to match rag.py expectations
+    history_dicts = [{"role": msg.role, "text": msg.text} for msg in req.history]
+    result = chat_with_docs(req.question, current_user.id, history_dicts)
     return result
 
 
@@ -414,6 +429,28 @@ async def listen_document(filename: str, language: str = "English", current_user
         "audio_url": audio_url,
         "status": "success"
     }
+
+
+@app.get("/audio-status")
+async def get_audio_status(
+    filename: str, 
+    audio_type: str = "summary", 
+    language: str = "English",
+    current_user: User = Depends(get_current_user)
+):
+    clean_name = filename.replace(".pdf", "").replace(" ", "_")
+    if audio_type == "summary":
+        audio_filename = f"{clean_name}_summary_{language}_audio.mp3"
+    else:
+        audio_filename = f"{clean_name}_{language}_audio.mp3"
+        
+    audio_path = f"{OUTPUTS_PATH}/{current_user.id}/{audio_filename}"
+    
+    if os.path.exists(audio_path):
+        audio_url = f"http://localhost:8000/outputs/{current_user.id}/{audio_filename}"
+        return {"ready": True, "audio_url": audio_url}
+        
+    return {"ready": False}
 
 
 @app.get("/audio-history")
