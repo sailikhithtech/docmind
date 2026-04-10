@@ -68,6 +68,35 @@ function Background() {
   )
 }
 
+// ─── AI Loading State ──────────────────────────────────────
+function AILoadingState({ message, subMessage, progress, inline }) {
+  const size = inline ? 48 : 80;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: inline ? 16 : 24, padding: inline ? 20 : 40, animation: "fadeIn 0.4s ease", width: "100%" }}>
+      <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "2px dashed var(--blue)", animation: "spin 3s linear infinite", opacity: 0.4 }} />
+        <div style={{ position: "absolute", inset: -8, borderRadius: "50%", border: "2px dashed var(--purple)", animation: "spin 4s linear infinite reverse", opacity: 0.2 }} />
+        <div style={{ position: "absolute", inset: 8, borderRadius: "50%", border: "3px solid var(--border)", borderTopColor: "var(--blue)", animation: "spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite" }} />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: inline ? 18 : 26, animation: "pulse 2s ease infinite" }}>🧠</div>
+      </div>
+      
+      <div style={{ textAlign: "center", maxWidth: 400 }}>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: inline ? 16 : 18, fontWeight: 700, color: "var(--text)", marginBottom: 6, animation: "pulse 2s ease infinite" }}>{message}</div>
+        {subMessage && <div style={{ fontSize: inline ? 13 : 14, color: "var(--text-dim)", lineHeight: 1.5 }}>{subMessage}</div>}
+      </div>
+
+      {progress !== undefined && progress.total > 1 && (
+        <div style={{ width: "100%", maxWidth: 280, display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+          <div style={{ width: "100%", height: 6, background: "var(--bg3)", borderRadius: 100, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "linear-gradient(90deg, var(--blue), var(--purple))", width: `${(progress.current / progress.total) * 100}%`, transition: "width 0.5s ease", borderRadius: 100 }} />
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-dimmer)", textAlign: "center", fontFamily: "var(--font-display)", fontWeight: 600 }}>{progress.current} / {progress.total} files processed</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Listen Button ────────────────────────────────────────
 function ListenButton({ filename }) {
   const [language, setLanguage] = useState("English")
@@ -83,12 +112,17 @@ function ListenButton({ filename }) {
     try {
       const res = await authFetch(`${API}/listen?filename=${encodeURIComponent(filename)}&language=${language}`, { method: "POST" })
       const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data.detail || "Audio generation failed");
+      }
+      
       if (data.audio_url) {
         setAudioUrl(data.audio_url)
         setTimeout(() => audioRef.current?.play(), 300)
       }
-    } catch {
-      alert("Audio generation failed. Make sure backend is running.")
+    } catch (err) {
+      alert(err.message || "Audio generation failed. Make sure backend is running.")
     }
     setLoading(false)
   }
@@ -214,14 +248,6 @@ function SummaryHistoryPage({ showToast, onBack }) {
           <p style={{ color: "var(--text-dim)", fontSize: 14 }}>All your previously summarized documents with full details</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={onBack} style={{
-            background: "var(--card)", border: "1px solid var(--border)",
-            color: "var(--text-dim)", padding: "10px 20px", borderRadius: 8,
-            fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 13, transition: "all 0.2s", cursor: "pointer"
-          }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
-          >← Back</button>
           <button onClick={fetchHistory} style={{
             background: "var(--card)", border: "1px solid var(--border)",
             color: "var(--text-dim)", padding: "10px 20px", borderRadius: 8,
@@ -280,89 +306,62 @@ function SummaryHistoryPage({ showToast, onBack }) {
                   onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)" }}
                 >
                   {/* Card Header */}
-                  <div style={{ padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, minWidth: 0 }}>
-                      {/* Icon */}
-                      <div style={{
-                        width: 48, height: 48, borderRadius: 12, flexShrink: 0,
-                        background: `${pc}22`, border: `1px solid ${pc}55`,
-                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22
-                      }}>{personaEmoji[item.persona] || "💬"}</div>
-
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15,
-                          marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
-                        }}>{item.filename}</div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          {/* Persona badge */}
-                          <span style={{
-                            background: `${pc}22`, border: `1px solid ${pc}55`,
-                            color: pc, padding: "2px 10px", borderRadius: 100,
-                            fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700
-                          }}>{personaEmoji[item.persona]} {item.persona}</span>
-                          {/* Model badge */}
-                          <span style={{
-                            background: "var(--bg3)", border: "1px solid var(--border)",
-                            color: "var(--text-dim)", padding: "2px 10px", borderRadius: 100,
-                            fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 600
-                          }}>🤖 {item.model_used}</span>
-                          {/* Date */}
-                          <span style={{ fontSize: 12, color: "var(--text-dimmer)" }}>🕐 {item.date}</span>
-                        </div>
-                      </div>
+                  <div className="horizontal-card-row">
+                    
+                    {/* COL 1: Document Info */}
+                    <div className="card-col-info">
+                       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 12, flexShrink: 0, background: `${pc}22`, border: `1px solid ${pc}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                            {personaEmoji[item.persona] || "📄"}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {item.filename}
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--text-dimmer)" }}>🕐 {item.date}</div>
+                          </div>
+                       </div>
+                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                          <span style={{ background: `${pc}22`, border: `1px solid ${pc}55`, color: pc, padding: "3px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>
+                            {personaEmoji[item.persona]} {item.persona}
+                          </span>
+                          <span style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "3px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 600 }}>
+                            🤖 {item.model_used}
+                          </span>
+                       </div>
                     </div>
-
-                    {/* Confidence + Actions */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                      {/* Score pill */}
-                      <div style={{
-                        background: `${sc}22`, border: `1px solid ${sc}55`,
-                        color: sc, padding: "4px 14px", borderRadius: 100,
-                        fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 13
-                      }}>{pct}%</div>
-
-                      {/* Expand toggle */}
-                      <button onClick={() => toggleExpand(item.id)} style={{
-                        background: "var(--bg3)", border: "1px solid var(--border)",
-                        color: "var(--text-dim)", padding: "6px 14px", borderRadius: 8,
-                        fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600,
-                        cursor: "pointer", transition: "all 0.2s"
-                      }}
+                    
+                    {/* COL 2: Preview & Confidence */}
+                    <div className="card-col-preview">
+                       {!isOpen && item.summary && (
+                         <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.6, margin: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                           {item.summary}
+                         </p>
+                       )}
+                       <div style={{ marginTop: (!isOpen && item.summary) ? 16 : 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
+                            <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-display)", fontWeight: 600 }}>Confidence</span>
+                            <span style={{ fontWeight: 800, color: sc, fontFamily: "var(--font-display)" }}>{pct}%</span>
+                          </div>
+                          <div style={{ height: 5, background: "var(--bg3)", borderRadius: 100, overflow: "hidden" }}>
+                            <div style={{ height: "100%", background: sc, width: `${pct}%`, transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)", boxShadow: `0 0 8px ${sc}` }} />
+                          </div>
+                       </div>
+                    </div>
+                    
+                    {/* COL 3: Actions */}
+                    <div className="card-col-actions">
+                      <button onClick={() => toggleExpand(item.id)} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "8px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s", width: "100%" }}
                         onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
                       >{isOpen ? "▲ Hide" : "▼ View"}</button>
-
-                      {/* Delete */}
-                      <button onClick={() => setConfirmDelete(item.id)} style={{
-                        background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
-                        color: "var(--red)", padding: "6px 12px", borderRadius: 8,
-                        fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600,
-                        cursor: "pointer", transition: "all 0.2s"
-                      }}
+                      
+                      <button onClick={() => setConfirmDelete(item.id)} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--red)", padding: "8px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s", width: "100%" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.18)"}
                         onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
                       >🗑 Delete</button>
                     </div>
                   </div>
-
-                  {/* Confidence bar (always visible) */}
-                  <div style={{ padding: "0 24px 8px" }}>
-                    <div style={{ height: 3, background: "var(--bg3)", borderRadius: 100, overflow: "hidden" }}>
-                      <div style={{ height: "100%", background: sc, width: `${pct}%`, transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)", boxShadow: `0 0 8px ${sc}` }} />
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-dimmer)", marginTop: 4 }}>{item.hallucination?.label || "Confidence score"}</div>
-                  </div>
-
-                  {/* Summary preview (always visible, truncated) */}
-                  {!isOpen && item.summary && (
-                    <div style={{ padding: "8px 24px 20px" }}>
-                      <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.7, margin: 0,
-                        display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden"
-                      }}>{item.summary}</p>
-                    </div>
-                  )}
 
                   {/* Expanded section */}
                   {isOpen && (
@@ -506,13 +505,13 @@ function HistoryPage({ showToast }) {
       )}
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 32, animation: "fadeUp 0.4s ease" }}>
+      <div className="header-meta" style={{ marginBottom: 32, animation: "fadeUp 0.4s ease" }}>
         <div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "var(--blue-dim)", border: "1px solid var(--blue-glow)", borderRadius: 100, padding: "4px 14px", marginBottom: 12 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: "pulse 2s infinite", display: "inline-block" }} />
             <span style={{ fontSize: 12, color: "var(--blue)", fontWeight: 600 }}>History</span>
           </div>
-          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 800, marginBottom: 6 }}>Document History</h2>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 32, fontWeight: 800, marginBottom: 6, whiteSpace: "nowrap" }}>Past Summaries</h2>
           <p style={{ color: "var(--text-dim)", fontSize: 14 }}>All your past summaries and generated audio files</p>
         </div>
         <button onClick={fetchAll} style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "10px 20px", borderRadius: 8, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 13, transition: "all 0.2s", cursor: "pointer" }}
@@ -552,7 +551,7 @@ function HistoryPage({ showToast }) {
         ) : (
           <>
             {/* Stats */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24, animation: "fadeUp 0.4s 0.1s ease both" }}>
+            <div className="history-stat-grid" style={{ marginBottom: 24, animation: "fadeUp 0.4s 0.1s ease both" }}>
               {[
                 { label: "Total", value: summaries.length, color: "var(--blue)", icon: "📄" },
                 { label: "Unique Docs", value: [...new Set(summaries.map(h => h.filename))].length, color: "var(--purple)", icon: "📚" },
@@ -579,46 +578,65 @@ function HistoryPage({ showToast }) {
                     onMouseEnter={e => e.currentTarget.style.borderColor = "var(--border-bright)"}
                     onMouseLeave={e => e.currentTarget.style.borderColor = "var(--border)"}
                   >
-                    {/* Header row */}
-                    <div style={{ padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, background: `${pc}22`, border: `1px solid ${pc}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{personaEmoji[item.persona] || "📄"}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, marginBottom: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.filename}</div>
-                          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-                            <span style={{ background: `${pc}22`, border: `1px solid ${pc}55`, color: pc, padding: "2px 9px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>{personaEmoji[item.persona]} {item.persona}</span>
-                            <span style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "2px 9px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 600 }}>🤖 {item.model_used}</span>
-                            <span style={{ fontSize: 11, color: "var(--text-dimmer)" }}>🕐 {item.date}</span>
+                    {/* Main Layout Wrapping Frame */}
+                    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: 18 }}>
+                      
+                      {/* Top Row: Meta info & Buttons */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+                        
+                        {/* Left Side: Avatar & Title */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                          <div style={{ width: 48, height: 48, borderRadius: 12, flexShrink: 0, background: `${pc}22`, border: `1px solid ${pc}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>
+                            {personaEmoji[item.persona] || "📄"}
+                          </div>
+                          <div>
+                            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>
+                              {item.filename}
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                              <span style={{ background: `${pc}22`, border: `1px solid ${pc}55`, color: pc, padding: "3px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>{personaEmoji[item.persona]} {item.persona}</span>
+                              <span style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "3px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 600 }}>🤖 {item.model_used}</span>
+                              <span style={{ fontSize: 12, color: "var(--text-dimmer)" }}>🕐 {item.date}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        <div style={{ background: `${sc}22`, border: `1px solid ${sc}55`, color: sc, padding: "4px 12px", borderRadius: 100, fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 12 }}>{pct}%</div>
-                        <button onClick={() => toggleExpand(item.id)} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "5px 12px", borderRadius: 7, fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
-                          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
-                          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
-                        >{isOpen ? "▲ Hide" : "▼ View"}</button>
-                        <button onClick={() => setConfirmDelete({ id: item.id, type: "summary" })} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--red)", padding: "5px 10px", borderRadius: 7, fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
-                          onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.18)"}
-                          onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
-                        >🗑 Delete</button>
-                      </div>
-                    </div>
 
-                    {/* Confidence bar */}
-                    <div style={{ padding: "0 22px 6px" }}>
-                      <div style={{ height: 3, background: "var(--bg3)", borderRadius: 100, overflow: "hidden" }}>
-                        <div style={{ height: "100%", background: sc, width: `${pct}%`, transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)", boxShadow: `0 0 8px ${sc}` }} />
+                        {/* Right Side Buttons aligned top-right */}
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => toggleExpand(item.id)} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "6px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
+                          >{isOpen ? "▲ Hide" : "▼ View"}</button>
+                          
+                          <button onClick={() => setConfirmDelete({ id: item.id, type: "summary" })} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--red)", padding: "6px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
+                            onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.18)"}
+                            onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
+                          >🗑 Delete</button>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 10, color: "var(--text-dimmer)", marginTop: 3 }}>{item.hallucination?.label || "Confidence"}</div>
-                    </div>
 
-                    {/* Summary preview */}
-                    {!isOpen && item.summary && (
-                      <div style={{ padding: "6px 22px 18px" }}>
-                        <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.7, margin: 0, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.summary}</p>
+                      {/* Logically separated progress bar layout */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 8 }}>
+                          <span style={{ color: "var(--text-dim)", fontFamily: "var(--font-display)", fontWeight: 600 }}>
+                            {item.hallucination?.label || "Confidence"}
+                          </span>
+                          <span style={{ fontWeight: 800, color: sc, fontFamily: "var(--font-display)" }}>
+                            {pct}%
+                          </span>
+                        </div>
+                        <div style={{ height: 5, background: "var(--bg3)", borderRadius: 100, overflow: "hidden" }}>
+                          <div style={{ height: "100%", background: sc, width: `${pct}%`, transition: "width 1.2s cubic-bezier(0.4,0,0.2,1)", boxShadow: `0 0 8px ${sc}` }} />
+                        </div>
                       </div>
-                    )}
+
+                      {/* Extracted preview logic */}
+                      {!isOpen && item.summary && (
+                        <p style={{ fontSize: 14, color: "var(--text-dim)", lineHeight: 1.6, margin: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                          {item.summary}
+                        </p>
+                      )}
+                    </div>
 
                     {/* Expanded */}
                     {isOpen && (
@@ -768,7 +786,7 @@ function LandingPage({ onStart }) {
 }
 
 // ─── Upload Page ──────────────────────────────────────────
-function UploadPage({ onComplete, showToast, onHistory }) {
+function UploadPage({ onComplete, showToast }) {
   const [files, setFiles] = useState([])
   const [persona, setPersona] = useState("")
   const [dragging, setDragging] = useState(false)
@@ -776,6 +794,43 @@ function UploadPage({ onComplete, showToast, onHistory }) {
   const [loadingMsg, setLoadingMsg] = useState("Uploading your documents...")
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
   const inputRef = useRef()
+
+  const [recent, setRecent] = useState([])
+  const [searchQuery, setSearchQuery] = useState("")
+
+  useEffect(() => {
+    authFetch(`${API}/summary-history`)
+      .then(r => r.json())
+      .then(d => {
+          const unique = []
+          const seen = new Set()
+          for (const item of (d.history || [])) {
+              if (!seen.has(item.filename)) {
+                  seen.add(item.filename)
+                  unique.push(item)
+              }
+          }
+          setRecent(unique)
+      }).catch(() => {})
+  }, [])
+
+  const handleRecentClick = (h) => {
+      const isCombined = h.filename.includes(" docs)")
+      let dCount = 1
+      if (isCombined) {
+         const match = h.filename.match(/\d+/)
+         if (match) dCount = parseInt(match[0])
+      }
+      const mockData = {
+          summary: h.summary,
+          hallucination: h.hallucination,
+          audio_url: h.audio_url,
+          combined: isCombined,
+          doc_count: dCount,
+          filenames: [h.filename]
+      }
+      onComplete(mockData, h.filename, h.persona, [h.filename])
+  }
 
   const personas = [
     { id: "Student", emoji: "🎓", label: "Student", desc: "Simple concepts & key definitions" },
@@ -875,54 +930,39 @@ function UploadPage({ onComplete, showToast, onHistory }) {
   }
 
   if (loading) return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, position: "relative", zIndex: 1 }}>
-      <div style={{ width: 64, height: 64, borderRadius: "50%", border: "2px solid var(--border)", borderTop: "2px solid var(--blue)", animation: "spin 1s linear infinite" }} />
-      <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 600, animation: "pulse 2s ease infinite" }}>{loadingMsg}</div>
-      {uploadProgress.total > 1 && (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 240, height: 6, background: "var(--bg3)", borderRadius: 100, overflow: "hidden" }}>
-            <div style={{ height: "100%", background: "linear-gradient(90deg, var(--blue), var(--purple))", width: `${(uploadProgress.current / uploadProgress.total) * 100}%`, transition: "width 0.5s ease", borderRadius: 100 }} />
-          </div>
-          <div style={{ fontSize: 13, color: "var(--text-dim)", fontFamily: "var(--font-display)", fontWeight: 600 }}>{uploadProgress.current} / {uploadProgress.total} files processed</div>
-        </div>
-      )}
-      <div style={{ fontSize: 13, color: "var(--text-dimmer)" }}>Processing with Qwen 2.5 locally on your machine</div>
-      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-        {[0, 1, 2].map(i => (<div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: `pulse 1.2s ${i * 0.2}s ease infinite` }} />))}
-      </div>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
+      <AILoadingState 
+        message={loadingMsg} 
+        subMessage="Processing with Qwen 2.5 locally on your machine" 
+        progress={uploadProgress.total > 1 ? uploadProgress : undefined} 
+      />
     </div>
   )
 
+  const filteredRecent = recent.filter(r => r.filename.toLowerCase().includes(searchQuery.toLowerCase()))
+
   return (
     <div style={{ minHeight: "100vh", position: "relative", zIndex: 1, padding: "40px 24px" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, animation: "fadeUp 0.3s ease" }}>
-          <button onClick={onHistory} style={{
-            background: "var(--card)", border: "1px solid var(--border)",
-            color: "var(--text-dim)", padding: "8px 18px", borderRadius: 8,
-            fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 13,
-            transition: "all 0.2s", cursor: "pointer", display: "flex", alignItems: "center", gap: 6
-          }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
-          >📜 History</button>
-        </div>
-        <div style={{ textAlign: "center", marginBottom: 48, animation: "fadeUp 0.4s ease" }}>
-          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 36, fontWeight: 800, marginBottom: 12 }}>Upload Your Documents</h2>
-          <p style={{ color: "var(--text-dim)", fontSize: 15 }}>Drop one or more PDFs and choose your persona to get personalized AI summaries</p>
-        </div>
-        <div onClick={() => inputRef.current?.click()} onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={handleDrop}
-          style={{ border: `2px dashed ${dragging ? "var(--blue)" : files.length > 0 ? "var(--green)" : "var(--border-bright)"}`, borderRadius: 20, padding: "48px 32px", textAlign: "center", cursor: "pointer", background: dragging ? "var(--blue-dim)" : files.length > 0 ? "rgba(16,185,129,0.05)" : "var(--card)", transition: "all 0.3s", marginBottom: files.length > 0 ? 16 : 32, boxShadow: dragging ? "0 0 40px var(--blue-glow)" : "none", animation: "fadeUp 0.4s 0.1s ease both" }}>
-          <input ref={inputRef} type="file" accept=".pdf" multiple onChange={handleFile} style={{ display: "none" }} />
-          <div style={{ fontSize: 48, marginBottom: 16 }}>{files.length > 0 ? "✅" : "📄"}</div>
-          {files.length > 0 ? (
-            <><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{files.length} PDF{files.length > 1 ? "s" : ""} selected</div>
-              <div style={{ color: "var(--text-dim)", fontSize: 14 }}>{(totalSize / 1024 / 1024).toFixed(2)} MB total · Click or drop to add more</div></>
-          ) : (
-            <><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Drop your PDFs here</div>
-              <div style={{ color: "var(--text-dim)", fontSize: 14 }}>or click to browse · Supports multiple files</div></>
-          )}
-        </div>
+      <div className="upload-layout">
+        
+        {/* Left Column: Upload Area */}
+        <div className="upload-area">
+          <div style={{ textAlign: "center", marginBottom: 48, animation: "fadeUp 0.4s ease" }}>
+            <h2 className="header-title">Upload Your Documents</h2>
+            <p style={{ color: "var(--text-dim)", fontSize: 15 }}>Drop one or more PDFs and choose your persona to get personalized AI summaries</p>
+          </div>
+          <div onClick={() => inputRef.current?.click()} onDragOver={e => { e.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={handleDrop}
+            style={{ border: `2px dashed ${dragging ? "var(--blue)" : files.length > 0 ? "var(--green)" : "var(--border-bright)"}`, borderRadius: 20, padding: "48px 32px", textAlign: "center", cursor: "pointer", background: dragging ? "var(--blue-dim)" : files.length > 0 ? "rgba(16,185,129,0.05)" : "var(--card)", transition: "all 0.3s", marginBottom: files.length > 0 ? 16 : 32, boxShadow: dragging ? "0 0 40px var(--blue-glow)" : "none", animation: "fadeUp 0.4s 0.1s ease both" }}>
+            <input ref={inputRef} type="file" accept=".pdf" multiple onChange={handleFile} style={{ display: "none" }} />
+            <div style={{ fontSize: 48, marginBottom: 16 }}>{files.length > 0 ? "✅" : "📄"}</div>
+            {files.length > 0 ? (
+              <><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{files.length} PDF{files.length > 1 ? "s" : ""} selected</div>
+                <div style={{ color: "var(--text-dim)", fontSize: 14 }}>{(totalSize / 1024 / 1024).toFixed(2)} MB total · Click or drop to add more</div></>
+            ) : (
+              <><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Drop your PDFs here</div>
+                <div style={{ color: "var(--text-dim)", fontSize: 14 }}>or click to browse · Supports multiple files</div></>
+            )}
+          </div>
 
         {/* File list */}
         {files.length > 0 && (
@@ -963,7 +1003,7 @@ function UploadPage({ onComplete, showToast, onHistory }) {
 
         <div style={{ marginBottom: 32, animation: "fadeUp 0.4s 0.2s ease both" }}>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13, letterSpacing: "0.1em", color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 16 }}>Select Your Persona</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          <div className="persona-grid">
             {personas.map(p => (
               <div key={p.id} onClick={() => setPersona(p.id)} style={{ border: `1px solid ${persona === p.id ? "var(--blue)" : "var(--border)"}`, borderRadius: 16, padding: "24px 16px", textAlign: "center", cursor: "pointer", transition: "all 0.25s", background: persona === p.id ? "var(--blue-dim)" : "var(--card)", boxShadow: persona === p.id ? "0 0 24px var(--blue-glow)" : "none" }}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>{p.emoji}</div>
@@ -977,14 +1017,39 @@ function UploadPage({ onComplete, showToast, onHistory }) {
         <button onClick={handleAnalyze} style={{ width: "100%", padding: "18px", marginTop: 20, background: (files.length === 0 || !persona) ? "var(--bg3)" : "linear-gradient(135deg, var(--blue), var(--purple))", color: (files.length === 0 || !persona) ? "var(--text-dimmer)" : "#fff", borderRadius: 12, fontSize: 16, fontFamily: "var(--font-display)", fontWeight: 700, letterSpacing: "0.02em", transition: "all 0.3s", animation: "fadeUp 0.4s 0.3s ease both" }}>
           {files.length > 0 && persona ? `✨ Analyze ${files.length} Document${files.length > 1 ? "s" : ""}` : "Upload PDFs and select persona to continue"}
         </button>
+        </div>
+
+        {/* Right Column: Recent Documents */}
+        <div className="recent-area" style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: "24px", height: "fit-content", position: "sticky", top: 100, animation: "fadeUp 0.4s ease" }}>
+            <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Recent Documents</h3>
+            <input 
+                value={searchQuery} onChange={e => setSearchQuery(e.target.value)} 
+                placeholder="Search recent files..." 
+                style={{ width: "100%", padding: "10px 14px", borderRadius: 8, background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text)", marginBottom: 16, fontFamily: "var(--font)", outline: "none" }} 
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto", paddingRight: 4 }}>
+                {filteredRecent.length === 0 ? (
+                    <div style={{ color: "var(--text-dim)", fontSize: 13, textAlign: "center", padding: "30px 0" }}>No recent documents found.</div>
+                ) : filteredRecent.map((h, i) => (
+                    <div key={h.id} onClick={() => handleRecentClick(h)} style={{ padding: "12px", background: "var(--bg3)", borderRadius: 10, cursor: "pointer", border: "1px solid transparent", transition: "all 0.2s", animation: `fadeIn 0.2s ${i*0.05}s ease both` }} 
+                        onMouseEnter={e => { e.currentTarget.style.borderColor="var(--border-bright)"; e.currentTarget.style.transform="translateX(4px)" }} 
+                        onMouseLeave={e => { e.currentTarget.style.borderColor="transparent"; e.currentTarget.style.transform="translateX(0)" }}>
+                        <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 6 }}>{h.filename}</div>
+                        <div style={{ display: "flex", gap: 6, fontSize: 11, color: "var(--text-dim)", alignItems: "center" }}>
+                          <span style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", padding: "2px 8px", borderRadius: 100, fontWeight: 700 }}>{h.persona}</span>
+                          <span>{h.date.split(" ")[0]}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
       </div>
     </div>
   )
 }
 
 // ─── Results Dashboard ────────────────────────────────────
-function ResultsDashboard({ data, filename, persona, onReset, showToast, allFiles, onSwitchDoc, onHistory }) {
-  const [activeTab, setActiveTab] = useState("summary")
+function ResultsDashboard({ data, filename, persona, activeTab, setPage, showToast }) {
   const [chatHistory, setChatHistory] = useState([])
   const [chatInput, setChatInput] = useState("")
   const [chatLoading, setChatLoading] = useState(false)
@@ -994,13 +1059,23 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
   const activesentenceRef = useRef()
 
   // ── Audio readiness polling ──────────────────────────────
-  const [audioReady, setAudioReady] = useState(false)
-  const [audioUrl, setAudioUrl] = useState(null)
+  const [audioReady, setAudioReady] = useState(!!data.audio_url)
+  const [audioUrl, setAudioUrl] = useState(data.audio_url || null)
   const audioPollRef = useRef(null)
 
-  // Start polling when user switches to the audio tab
+  // Update effect if parent `data` changes (e.g. switching doc)
   useEffect(() => {
-    if (activeTab !== "audio") return
+    if (data.audio_url) {
+      setAudioReady(true)
+      setAudioUrl(data.audio_url)
+    } else {
+      setAudioReady(false)
+      setAudioUrl(null)
+    }
+  }, [data.audio_url])
+
+  // Start polling immediately in the background
+  useEffect(() => {
     // Already confirmed ready — no need to poll again
     if (audioReady) return
 
@@ -1021,7 +1096,7 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
     poll() // immediate first check
     audioPollRef.current = setInterval(poll, 2000)
     return () => clearInterval(audioPollRef.current)
-  }, [activeTab, audioReady, filename])
+  }, [audioReady, filename])
 
   // Split summary into sentences for highlighting
   const sentences = (data.summary || "").split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0)
@@ -1071,12 +1146,26 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
   const sendChat = async () => {
     if (!chatInput.trim() || chatLoading) return
     const q = chatInput.trim()
+    
+    // Capture the existing history before we add the new optimistic message
+    const currentHistory = [...chatHistory]
+    
     setChatInput("")
     setChatHistory(h => [...h, { role: "user", text: q }])
     setChatLoading(true)
+    
     try {
-      const res = await authFetch(`${API}/chat?filename=${encodeURIComponent(filename)}&question=${encodeURIComponent(q)}`, { method: "POST" })
+      const payload = {
+        question: q,
+        history: currentHistory.map(m => ({ role: m.role, text: m.text }))
+      }
+      const res = await authFetch(`${API}/chat`, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
       const d = await res.json()
+      if (!res.ok) throw new Error(d.detail || "Chat failed");
       // Store sources alongside the answer so the UI can show which doc(s) were used
       setChatHistory(h => [...h, { role: "ai", text: d.answer, sources: d.sources || [] }])
     } catch {
@@ -1097,78 +1186,9 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
 
   const scoreColor = { green: "var(--green)", yellow: "var(--yellow)", red: "var(--red)", gray: "var(--text-dim)" }[data.hallucination?.color || "gray"]
 
-  const [switchLoading, setSwitchLoading] = useState(false)
-
-  const handleSwitchDoc = async (newFilename) => {
-    if (newFilename === filename || switchLoading) return
-    setSwitchLoading(true)
-    try {
-      const sumRes = await authFetch(`${API}/summarize?filename=${encodeURIComponent(newFilename)}&persona=${persona}&model=best`, { method: "POST" })
-      if (!sumRes.ok) { const err = await sumRes.json(); throw new Error(err.detail || "Summarization failed") }
-      const sumData = await sumRes.json()
-      onSwitchDoc(sumData, newFilename)
-    } catch (err) {
-      showToast(err.message || "Failed to switch document", "error")
-    }
-    setSwitchLoading(false)
-  }
-
   return (
-    <div style={{ minHeight: "100vh", position: "relative", zIndex: 1 }}>
-      {/* Loading overlay when switching documents */}
-      {switchLoading && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 999, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", border: "2px solid var(--border)", borderTop: "2px solid var(--blue)", animation: "spin 1s linear infinite" }} />
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 16, animation: "pulse 2s ease infinite" }}>Switching document...</div>
-          <div style={{ fontSize: 13, color: "var(--text-dimmer)" }}>Generating summary for the new document</div>
-        </div>
-      )}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 32px", borderBottom: "1px solid var(--border)", background: "rgba(8,11,18,0.8)", backdropFilter: "blur(20px)", position: "sticky", top: 0, zIndex: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20 }}>{data.combined ? "📚" : "📄"}</span>
-          {data.combined ? (
-            <>
-              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14 }}>Combined Summary</span>
-              <span style={{ background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.4)", color: "var(--purple)", padding: "2px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>📚 {data.doc_count} docs merged</span>
-            </>
-          ) : allFiles && allFiles.length > 1 ? (
-            <select value={filename} onChange={e => handleSwitchDoc(e.target.value)} style={{
-              fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14,
-              background: "var(--bg3)", color: "var(--text)", border: "1px solid var(--border)",
-              borderRadius: 8, padding: "6px 12px", cursor: "pointer", maxWidth: 220,
-              appearance: "auto"
-            }}>
-              {allFiles.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
-          ) : (
-            <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{filename}</span>
-          )}
-          {!data.combined && allFiles && allFiles.length > 1 && (
-            <span style={{ background: "var(--blue-dim)", border: "1px solid var(--blue-glow)", color: "var(--blue)", padding: "2px 10px", borderRadius: 100, fontSize: 11, fontFamily: "var(--font-display)", fontWeight: 700 }}>{allFiles.length} docs</span>
-          )}
-        </div>
-        <div style={{ background: `${personaColors[persona]}22`, border: `1px solid ${personaColors[persona]}55`, color: personaColors[persona], padding: "6px 16px", borderRadius: 100, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13 }}>
-          {persona === "Student" ? "🎓" : persona === "Researcher" ? "🔬" : "💼"} {persona}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <button onClick={onHistory} style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "8px 16px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 600, transition: "all 0.2s", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
-          >📜 History</button>
-          <button onClick={onReset} style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "8px 16px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 600, transition: "all 0.2s", cursor: "pointer" }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}
-          >+ New Document</button>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 4, padding: "16px 32px", borderBottom: "1px solid var(--border)" }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{ padding: "10px 20px", borderRadius: 8, background: activeTab === t.id ? "var(--blue-dim)" : "transparent", color: activeTab === t.id ? "var(--blue)" : "var(--text-dim)", border: `1px solid ${activeTab === t.id ? "var(--blue-glow)" : "transparent"}`, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 13, transition: "all 0.2s" }}>{t.label}</button>
-        ))}
-      </div>
-
-      <div style={{ padding: "32px", maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ position: "relative" }}>
+        <div className="dashboard-content-pad" style={{ paddingTop: 40 }}>
 
         {activeTab === "summary" && (
           <div style={{ animation: "fadeIn 0.3s ease" }}>
@@ -1204,8 +1224,8 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
               <div style={{ fontSize: 13, color: "var(--text-dim)" }}>{data.hallucination?.label}</div>
             </div>
             <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={downloadJSON} style={{ flex: 1, padding: "14px", background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 10, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}>⬇ Download JSON</button>
-              <button onClick={() => setActiveTab("chat")} style={{ flex: 1, padding: "14px", background: "var(--blue-dim)", border: "1px solid var(--blue-glow)", color: "var(--blue)", borderRadius: 10, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }}>💬 Ask Questions</button>
+              <button onClick={downloadJSON} style={{ flex: 1, padding: "14px", background: "var(--card)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 10, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, transition: "all 0.2s", cursor: "pointer" }}>⬇ Download JSON</button>
+              <button onClick={() => setPage("chat")} style={{ flex: 1, padding: "14px", background: "var(--blue-dim)", border: "1px solid var(--blue-glow)", color: "var(--blue)", borderRadius: 10, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, transition: "all 0.2s", cursor: "pointer" }}>💬 Ask Questions</button>
             </div>
           </div>
         )}
@@ -1262,10 +1282,16 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
                 </div>
               ))}
               {chatLoading && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--purple-dim)", border: "1px solid var(--purple)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🤖</div>
-                  <div style={{ background: "var(--card)", border: "1px solid var(--border)", padding: "12px 20px", borderRadius: 14, borderTopLeftRadius: 4, display: "flex", gap: 6, alignItems: "center" }}>
-                    {[0, 1, 2].map(i => (<div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: `pulse 1.2s ${i * 0.2}s ease infinite` }} />))}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, animation: "fadeIn 0.3s ease" }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--purple-dim)", border: "1px solid var(--purple)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, position: "relative" }}>
+                     <div style={{ position: "absolute", inset: -2, border: "2px solid transparent", borderTopColor: "var(--purple)", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                     🤖
+                  </div>
+                  <div style={{ background: "var(--card)", border: "1px solid var(--border)", padding: "14px 22px", borderRadius: 16, borderTopLeftRadius: 4, display: "flex", gap: 10, alignItems: "center", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                       {[0, 1, 2].map(i => (<div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: `pulse 1.2s ${i * 0.2}s ease infinite` }} />))}
+                    </div>
+                    <span style={{ fontSize: 13, color: "var(--text-dim)", fontFamily: "var(--font-display)", fontWeight: 600, animation: "pulse 2s ease infinite" }}>AI is computing answer...</span>
                   </div>
                 </div>
               )}
@@ -1284,7 +1310,7 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
           <div style={{ animation: "fadeIn 0.3s ease" }}>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Sentence-Level Analysis</div>
             <p style={{ color: "var(--text-dim)", fontSize: 14, marginBottom: 24 }}>Each sentence in the summary is checked against the original document.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 }}>
+            <div className="stat-grid" style={{ marginBottom: 28 }}>
               {[
                 { label: "Total Checked", value: data.hallucination?.total_count ?? 0, color: "var(--text)" },
                 { label: "Grounded", value: data.hallucination?.grounded_count ?? 0, color: "var(--green)" },
@@ -1312,7 +1338,7 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
         {activeTab === "audio" && (
           <div style={{ animation: "fadeIn 0.3s ease", paddingTop: 20 }}>
             {/* Split layout: Audio player (left) + Summary text (right) */}
-            <div style={{ display: "flex", gap: 28, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div className="split-layout">
 
               {/* Left: Audio Section */}
               <div style={{ flex: "1 1 380px", minWidth: 320 }}>
@@ -1341,13 +1367,12 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
                       }}>⬇ Download Summary Audio</a>
                     </div>
                   ) : (
-                    <div style={{ color: "var(--text-dim)", fontSize: 14, background: "var(--bg3)", borderRadius: 12, padding: "28px 20px", lineHeight: 1.6 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: "50%", border: "2px solid var(--border)", borderTop: "2px solid var(--blue)", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
-                      <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, marginBottom: 6, color: "var(--text)" }}>Generating Audio...</div>
-                      <div style={{ fontSize: 13, color: "var(--text-dimmer)" }}>Your summary is being converted to speech. This usually takes 5–15 seconds.</div>
-                      <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 18 }}>
-                        {[0, 1, 2].map(i => (<div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: `pulse 1.2s ${i * 0.2}s ease infinite` }} />))}
-                      </div>
+                    <div style={{ background: "var(--bg3)", borderRadius: 12, padding: "10px" }}>
+                       <AILoadingState 
+                          message="Generating Audio..." 
+                          subMessage="Converting your summary to natural speech." 
+                          inline={true} 
+                       />
                     </div>
                   )}
                 </div>
@@ -1415,6 +1440,7 @@ function ResultsDashboard({ data, filename, persona, onReset, showToast, allFile
             </div>
           </div>
         )}
+        {/* End Results Options */}
       </div>
     </div>
   )
@@ -1498,6 +1524,7 @@ export default function App() {
   const [persona, setPersona] = useState("")
   const [allFiles, setAllFiles] = useState([])
   const [toast, setToast] = useState(null)
+  const [switchLoading, setSwitchLoading] = useState(false)
 
   // Auth State
   const [user, setUser] = useState(() => {
@@ -1539,11 +1566,23 @@ export default function App() {
   const showToast = (message, type = "info") => setToast({ message, type, id: Date.now() })
 
   const handleComplete = (data, fn, p, uploadedFiles) => {
-    setResultData(data); setFilename(fn); setPersona(p); setAllFiles(uploadedFiles || [fn]); setPage("results")
+    setResultData(data); setFilename(fn); setPersona(p); setAllFiles(uploadedFiles || [fn]); setPage("summary")
   }
 
-  const handleSwitchDoc = (data, newFilename) => {
-    setResultData(data); setFilename(newFilename)
+  const handleSwitchDocFull = async (newFilename) => {
+    if (newFilename === filename || switchLoading) return
+    setSwitchLoading(true)
+    try {
+      const sumRes = await authFetch(`${API}/summarize?filename=${encodeURIComponent(newFilename)}&persona=${persona}&model=best`, { method: "POST" })
+      if (!sumRes.ok) { const err = await sumRes.json(); throw new Error(err.detail || "Summarization failed") }
+      const sumData = await sumRes.json()
+      setResultData(sumData)
+      setFilename(newFilename)
+      if (["history", "upload"].includes(page)) setPage("summary")
+    } catch (err) {
+      showToast(err.message || "Failed to switch document", "error")
+    }
+    setSwitchLoading(false)
   }
 
   const handleReset = () => {
@@ -1559,21 +1598,120 @@ export default function App() {
     )
   }
 
+  const tabsList = [
+    { id: "upload", label: "Dashboard", icon: "🏠", type: "main" },
+    { id: "summary", label: "Summary", icon: "📋", type: "doc" },
+    { id: "chat", label: "Chat", icon: "💬", type: "doc" },
+    { id: "hallucination", label: "Analysis", icon: "🔍", type: "doc" },
+    { id: "audio", label: "Audio", icon: "🔊", type: "doc" },
+    { id: "history", label: "History", icon: "📜", type: "main" }
+  ]
+
   return (
     <>
       <Background />
       {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* Persistent Auth Header */}
-      <div style={{ position: "fixed", top: 20, right: 24, zIndex: 1000, display: "flex", alignItems: "center", gap: 16 }}>
-        {user && <span style={{ color: "var(--text)", fontSize: 14, fontFamily: "var(--font-display)", fontWeight: 600, background: "rgba(8,11,18,0.5)", padding: "6px 12px", borderRadius: 8, backdropFilter: "blur(10px)" }}>👤 {user.name}</span>}
-        <button onClick={handleLogout} style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "var(--red)", padding: "6px 16px", borderRadius: 8, fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.25)" }} onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.15)" }}>Logout</button>
-      </div>
+      {/* Switch doc loading overlay mapping */}
+      {switchLoading && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(8,11,18,0.85)", backdropFilter: "blur(12px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <AILoadingState message="Switching Document..." subMessage="Generating AI summary for the new document" />
+        </div>
+      )}
 
-      {page === "landing" && <LandingPage onStart={() => setPage("upload")} />}
-      {page === "upload" && <UploadPage onComplete={handleComplete} showToast={showToast} onHistory={() => setPage("history")} />}
-      {page === "results" && resultData && <ResultsDashboard data={resultData} filename={filename} persona={persona} onReset={handleReset} showToast={showToast} allFiles={allFiles} onSwitchDoc={handleSwitchDoc} onHistory={() => setPage("history")} />}
-      {page === "history" && <SummaryHistoryPage showToast={showToast} onBack={() => setPage(resultData ? "results" : "upload")} />}
+      {page === "landing" ? (
+        <LandingPage onStart={() => setPage("upload")} />
+      ) : (
+        <div style={{ display: "flex", height: "100vh", overflow: "hidden", position: "relative", zIndex: 1 }}>
+          
+          {/* GLOBAL LEFT SIDEBAR */}
+          <div className="sidebar-nav" style={{ 
+            width: 260, background: "rgba(8,11,18,0.9)", borderRight: "1px solid var(--border)", 
+            display: "flex", flexDirection: "column", backdropFilter: "blur(20px)", flexShrink: 0 
+          }}>
+            {/* Brand */}
+            <div style={{ padding: "28px 24px 32px 24px", display: "flex", alignItems: "center", gap: 12 }}>
+               <div style={{ width: 34, height: 34, borderRadius: 8, background: "linear-gradient(135deg, var(--blue), var(--purple))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>⚡</div>
+               <span style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, color: "var(--blue)" }}>DocMind <span style={{ color: "var(--text)" }}>AI</span></span>
+            </div>
+
+            {/* Nav Links */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "0 16px", flex: 1, overflowY: "auto" }}>
+               {/* Main Nav */}
+               <button onClick={() => setPage("upload")} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, background: page === "upload" ? "rgba(59,130,246,0.15)" : "transparent", color: page === "upload" ? "var(--blue)" : "var(--text)", border: page === "upload" ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent", cursor: "pointer", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, transition: "all 0.2s" }} onMouseEnter={e => page !== "upload" && (e.currentTarget.style.background = "var(--card)")} onMouseLeave={e => page !== "upload" && (e.currentTarget.style.background = "transparent")}>
+                  <span style={{ fontSize: 18 }}>🏠</span> Dashboard
+               </button>
+
+               <div style={{ margin: "24px 0 8px 12px", fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 800 }}>Active Document</div>
+               
+               {resultData ? (
+                 <>
+                   {tabsList.filter(t => t.type === "doc").map(t => (
+                      <button key={t.id} onClick={() => setPage(t.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, background: page === t.id ? "rgba(59,130,246,0.15)" : "transparent", color: page === t.id ? "var(--blue)" : "var(--text-dim)", border: page === t.id ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent", cursor: "pointer", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, transition: "all 0.2s" }} onMouseEnter={e => page !== t.id && (e.currentTarget.style.background = "var(--card)")} onMouseLeave={e => page !== t.id && (e.currentTarget.style.background = "transparent")}>
+                         <span style={{ fontSize: 16 }}>{t.icon}</span> {t.label}
+                      </button>
+                   ))}
+                 </>
+               ) : (
+                 <div style={{ padding: "8px 12px", fontSize: 13, color: "var(--text-dimmer)", lineHeight: 1.5 }}>Upload a document in Dashboard to unlock tools</div>
+               )}
+
+               <div style={{ margin: "24px 0 8px 12px", fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 800 }}>Library</div>
+               <button onClick={() => setPage("history")} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, background: page === "history" ? "rgba(59,130,246,0.15)" : "transparent", color: page === "history" ? "var(--blue)" : "var(--text)", border: page === "history" ? "1px solid rgba(59,130,246,0.3)" : "1px solid transparent", cursor: "pointer", fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15, transition: "all 0.2s" }} onMouseEnter={e => page !== "history" && (e.currentTarget.style.background = "var(--card)")} onMouseLeave={e => page !== "history" && (e.currentTarget.style.background = "transparent")}>
+                  <span style={{ fontSize: 18 }}>📜</span> History
+               </button>
+
+               {/* Session Switcher inside Sidebar */}
+               {resultData && !resultData.combined && allFiles?.length > 1 && (
+                 <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div style={{ margin: "0 0 12px 12px", fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 800 }}>Session Files</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {allFiles.map(f => (
+                         <div key={f} onClick={() => handleSwitchDocFull(f)} style={{ padding: "10px 14px", borderRadius: 10, background: filename === f ? "rgba(255,255,255,0.05)" : "transparent", color: filename === f ? "var(--text)" : "var(--text-dim)", border: filename === f ? "1px solid var(--border)" : "1px solid transparent", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, transition: "all 0.2s" }} onMouseEnter={e => filename !== f && (e.currentTarget.style.background = "rgba(255,255,255,0.03)")} onMouseLeave={e => filename !== f && (e.currentTarget.style.background = "transparent")}>
+                            📄 {f}
+                         </div>
+                      ))}
+                    </div>
+                 </div>
+               )}
+            </div>
+
+            {/* User Area Bottom */}
+            {user && (
+              <div style={{ padding: "20px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 12 }}>
+                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--card)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>👤</div>
+                    <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, fontFamily: "var(--font-display)", fontWeight: 700 }}>{user.name}</div>
+                 </div>
+                 <button onClick={handleLogout} style={{ width: "100%", padding: "12px", borderRadius: 10, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "var(--red)", fontSize: 13, fontFamily: "var(--font-display)", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.2)"} onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.1)"}>
+                    Logout
+                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* MAIN CONTENT AREA */}
+          <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", position: "relative" }}>
+             {/* Document Status Header if we are in a document view */}
+             {["summary", "chat", "hallucination", "audio"].includes(page) && resultData && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 40px", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "rgba(8,11,18,0.8)", backdropFilter: "blur(20px)", zIndex: 10 }}>
+                  <div>
+                    <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 600 }}>{resultData.combined ? "Combined Multi-Document Overview" : filename}</h2>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                    <button onClick={handleReset} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "6px 14px", borderRadius: 8, fontSize: 12, fontFamily: "var(--font-display)", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-bright)"; e.currentTarget.style.color = "var(--text)" }} onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)" }}>+ New Document</button>
+                  </div>
+                </div>
+             )}
+
+             {page === "upload" && <UploadPage onComplete={handleComplete} showToast={showToast} />}
+             {page === "history" && <SummaryHistoryPage showToast={showToast} />}
+             {["summary", "chat", "hallucination", "audio"].includes(page) && resultData && (
+                <ResultsDashboard data={resultData} filename={filename} persona={persona} activeTab={page} setPage={setPage} showToast={showToast} />
+             )}
+          </div>
+        </div>
+      )}
     </>
   )
 }

@@ -72,3 +72,247 @@ body {
 
 button { cursor: pointer; border: none; outline: none; font-family: var(--font-body); }
 input, textarea { font-family: var(--font-body); outline: none; }
+
+/* ── Responsive Layouts ── */
+
+.upload-layout {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.upload-area { flex: 1.6; min-width: 0; }
+.recent-area { flex: 1; min-width: 0; }
+
+.persona-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.dashboard-layout {
+  height: calc(100vh - 73px);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar-nav {
+  width: 280px;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.split-layout {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.history-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.horizontal-card-row {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  padding: 24px;
+}
+
+.card-col-info {
+  flex: 1 1 200px;
+  min-width: 200px;
+}
+
+.card-col-preview {
+  flex: 2 1 350px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+}
+
+.card-col-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: flex-start;
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  line-height: 1.2;
+}
+
+.doc-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 600px;
+  color: var(--text);
+}
+
+.dashboard-content-pad {
+  padding: 32px 48px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* ── Breakpoints ── */
+
+@media (max-width: 900px) {
+  .upload-layout {
+    flex-direction: column;
+    gap: 40px;
+  }
+  
+  .upload-area, .recent-area {
+    width: 100% !important;
+    flex: none !important;
+  }
+
+  .persona-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .dashboard-layout {
+    flex-direction: column;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  
+  .sidebar-nav {
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+  }
+  
+  .sidebar-links {
+    display: flex;
+    flex-direction: row !important;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    gap: 8px;
+  }
+  
+  .split-layout {
+    flex-direction: column;
+  }
+
+  .split-layout > div {
+    flex: none !important;
+    width: 100% !important;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .history-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .header-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .doc-title {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .dashboard-content-pad {
+    padding: 24px 32px !important;
+  }
+}
+
+@media (max-width: 600px) {
+  h1, h2 {
+    word-break: break-word;
+    white-space: normal;
+  }
+
+  .header-title {
+    font-size: 28px !important;
+  }
+
+  .doc-title {
+    font-size: 18px !important;
+  }
+
+  .persona-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .history-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-content-pad {
+    padding: 20px 16px !important;
+  }
+
+  .horizontal-card-row { 
+    flex-direction: column; 
+    gap: 16px; 
+    padding: 20px; 
+  }
+  .card-col-preview, .card-col-actions {
+    border-left: none;
+    padding-left: 0;
+  }
+  .card-col-preview {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    flex: 1 1 auto;
+  }
+  .card-col-actions {
+    flex-direction: row;
+    gap: 12px;
+  }
+}
+
