@@ -14,8 +14,7 @@ print("Embedding model ready!")
 # Global vector database
 vector_store = None
 
-# Conversation memory
-conversation_history = []
+# Note: We now receive chat history dynamically per request
 
 
 def build_index(text, filename, user_id):
@@ -67,14 +66,9 @@ def _get_indexed_sources(user_id):
         return []
 
 
-def chat_with_docs(question, user_id):
+def chat_with_docs(question, user_id, history=[]):
 
     global vector_store
-    
-    # Store history per user_id, but here conversation_history is a simple global list. 
-    # For a real implementation, you'd store this in the db or a dict per user_id. 
-    # Since this is a prototype, we'll keep it global but just filter RAG chunks by user.
-    global conversation_history
 
     if vector_store is None:
         return {
@@ -128,8 +122,10 @@ def chat_with_docs(question, user_id):
 
     # ── Conversation history ─────────────────────────────────────────────
     history_text = ""
-    for item in conversation_history[-5:]:
-        history_text += f"User: {item['question']}\nAI: {item['answer']}\n"
+    # Look back at the last few turns (max 8 messages) to establish context
+    for msg in history[-8:]:
+        prefix = "User" if msg.get("role") == "user" else "AI"
+        history_text += f"{prefix}: {msg.get('text', '')}\n"
 
     # ── Multi-document-aware prompt ──────────────────────────────────────
     multi_doc_note = (
@@ -185,12 +181,8 @@ Answer:"""
         answer = answer.replace("\\(", "").replace("\\)", "")
         answer = answer.replace("\\text{", "").replace("}", "")
 
-        # Save conversation history
-        conversation_history.append({
-            "question": question,
-            "answer": answer
-        })
-
+        # History is naturally handled by the frontend passing it explicitly
+        
         return {
             "answer": answer,
             "sources": sources
