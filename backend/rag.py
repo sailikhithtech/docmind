@@ -3,16 +3,19 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 
-print("Loading embedding model...")
-
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
-
-print("Embedding model ready!")
-
-# Global vector database
+# Global instances
 vector_store = None
+embeddings = None
+
+def get_embeddings():
+    global embeddings
+    if embeddings is None:
+        print("Loading embedding model...")
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        print("Embedding model ready!")
+    return embeddings
 
 # Note: We now receive chat history dynamically per request
 
@@ -36,7 +39,7 @@ def build_index(text, filename, user_id):
 
         vector_store = Chroma.from_texts(
             texts=chunks,
-            embedding=embeddings,
+            embedding=get_embeddings(),
             metadatas=metadatas,
             collection_name="docmind_collection"
         )

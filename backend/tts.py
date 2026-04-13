@@ -1,36 +1,40 @@
-from gtts import gTTS
+import pyttsx3
 import os
 
-LANGUAGE_CODES = {
-    "English": "en",
-    "Hindi": "hi",
-    "Telugu": "te"
-}
+OUTPUT_DIR = "outputs"
 
-def convert_to_audio(text, filename, language="English", audio_type="document"):
-    """
-    Converts text to audio in the selected language
-    using gTTS and saves it to outputs folder.
+def convert_to_audio(text, filename, language="English"):
 
-    audio_type: "summary" or "document" — controls the output filename
-      - summary  → {name}_summary_{language}_audio.mp3
-      - document → {name}_{language}_audio.mp3
-    """
     try:
-        lang_code = LANGUAGE_CODES.get(language, "en")
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+
         clean_name = filename.replace(".pdf", "").replace(" ", "_")
 
-        if audio_type == "summary":
-            output_path = f"C:/Users/SAILIKHITH/OneDrive/Desktop/docmind/outputs/{clean_name}_summary_{language}_audio.mp3"
-        else:
-            output_path = f"C:/Users/SAILIKHITH/OneDrive/Desktop/docmind/outputs/{clean_name}_{language}_audio.mp3"
+        audio_file = f"{clean_name}_{language}_audio.mp3"
 
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        tts = gTTS(text=text[:3000], lang=lang_code, slow=False)
-        tts.save(output_path)
+        audio_path = os.path.join(OUTPUT_DIR, audio_file)
 
-        return output_path
+        engine = pyttsx3.init()
+
+        voices = engine.getProperty("voices")
+
+        # select english voice
+        selected_voice = voices[0].id
+
+        engine.setProperty("voice", selected_voice)
+
+        engine.setProperty("rate", 150)
+
+        print("Generating audio...")
+
+        engine.save_to_file(text, audio_path)
+
+        engine.runAndWait()
+
+        print("Audio generated:", audio_path)
+
+        return audio_path
 
     except Exception as e:
-        print(f"TTS Error: {str(e)}")
+        print("Audio generation error:", e)
         return None
