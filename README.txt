@@ -13,7 +13,7 @@ D:\docmind\
 
 ---
 
-## Step 1 — Install Python Libraries
+## Step 1 — Install Python Libraries & Download Ollama Application.
 Open Command Prompt and run:
 
 ```
@@ -39,10 +39,12 @@ npm install
 ---
 
 ## Step 3 — Every Time You Start the Project
+```
+Install qwen2.5 Model from LLM.
 
 Open 3 Command Prompt windows:
 
-WINDOW 1 — Start Ollama:
+WINDOW 1 — Start Ollama:(Preferrred LLM Model for your compatability)
 ```
 ollama serve
 ```
