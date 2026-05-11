@@ -1,77 +1,158 @@
-# DocMind AI — Setup Instructions
+# DocMind AI
+### Intelligent Multi-Document Analysis & Summarization System with Offline AI Support
 
-## Folder Structure
-Place everything inside D:\docmind\ like this:
+DocMind AI is an AI-powered document intelligence platform that allows users to upload PDF documents, generate intelligent summaries, interact using AI-powered chat, and convert summaries into audio outputs using offline AI technologies.
 
-```
-D:\docmind\
-├── backend\         ← All .py files go here
-├── frontend\        ← All frontend files go here
-├── uploads\         ← Auto created, PDFs saved here
-└── outputs\         ← Auto created, results saved here
-```
+The project combines:
+- Natural Language Processing (NLP)
+- Retrieval-Augmented Generation (RAG)
+- Semantic Search
+- Local Large Language Models (LLMs)
+- Offline Text-to-Speech (TTS)
+
+into a single integrated platform.
 
 ---
 
-## Step 1 — Install Python Libraries & Download Ollama Application.
-Open Command Prompt and run:
+#  Features
 
-```
-pip install fastapi uvicorn pymupdf pdfplumber spacy nltk langchain langchain-community chromadb sentence-transformers pyttsx3 python-multipart requests
-```
+✅ Multi-document PDF upload  
+✅ AI-generated summarization  
+✅ RAG-based conversational chat  
+✅ Semantic document retrieval  
+✅ Offline AI support using Ollama  
+✅ Offline audio generation  
+✅ User authentication  
+✅ Chat history management  
+✅ Vector database integration  
+✅ Responsive React frontend  
+
+---
+
+#  Tech Stack
+
+## Frontend
+- React.js
+- Tailwind CSS
+- Vite
+
+## Backend
+- FastAPI
+- Python
+
+## AI & NLP
+- LangChain
+- Sentence Transformers
+- Qwen LLM
+- Ollama
+- FAISS / ChromaDB
+
+## Audio
+- pyttsx3 (Offline TTS)
+
+---
+
+#  Project Structure
+
+Place everything inside:
+
+```bash
+D:\docmind\
+
+D:\docmind\
+├── backend\         # FastAPI backend files
+├── frontend\        # React frontend files
+├── uploads\         # Uploaded PDF files
+├── outputs\         # Generated outputs
+└── README.md
+
+# System Requirements
+
+Before running the project, install:
+
+Required Software
+Python 3.10+
+Node.js 18+
+Git
+Ollama
+  Installation Guide
+Step 1 — Clone the Repository
+git clone <YOUR_GITHUB_REPOSITORY_LINK>
+
+Example:
+
+git clone https://github.com/username/docmind-ai.git
 
 Then:
-```
+
+cd docmind-ai
+Step 2 — Install Python Dependencies
+
+Open Command Prompt:
+
+pip install fastapi uvicorn pymupdf pdfplumber spacy nltk langchain langchain-community chromadb sentence-transformers pyttsx3 python-multipart requests
+
+Then download the SpaCy language model:
+
 python -m spacy download en_core_web_sm
-```
-
----
-
-## Step 2 — Install Frontend Dependencies
-Open Command Prompt and run:
-
-```
-d:
-cd docmind\frontend
+Step 3 — Install Frontend Dependencies
+cd frontend
 npm install
-```
+Step 4 — Install Ollama
 
----
+Download and install Ollama:
 
-## Step 3 — Every Time You Start the Project
-```
-Install qwen2.5 Model from LLM.
+ -> https://ollama.com/download
 
-Open 3 Command Prompt windows:
+After installation, restart your PC.
 
-WINDOW 1 — Start Ollama:(Preferrred LLM Model for your compatability)
-```
+Step 5 — Download Qwen Model
+
+Open Command Prompt:
+
+ollama pull qwen2.5
+
+This downloads the local Large Language Model used in the project.
+
+ # Running the Project
+
+You must open 3 separate Command Prompt windows.
+
+WINDOW 1 — Start Ollama
 ollama serve
-```
 
-WINDOW 2 — Start Backend:
-```
+If you get:
+
+Error: bind: Only one usage of each socket address...
+
+it means Ollama is already running.
+
+WINDOW 2 — Start Backend
 d:
 cd docmind\backend
 uvicorn main:app --reload --port 8000
-```
 
-WINDOW 3 — Start Frontend:
-```
+Backend URL:
+
+http://localhost:8000
+
+Test backend:
+
+Open browser:
+
+http://localhost:8000
+
+Expected output:
+
+{"message":"DocMind AI is running!"}
+WINDOW 3 — Start Frontend
 d:
 cd docmind\frontend
 npm run dev
-```
 
-Then open http://localhost:5173 in your browser.
+Frontend URL:
 
----
-
-## Test Backend
-Open browser and go to: http://localhost:8000
-You should see: {"message": "DocMind AI is running!"}
-
----
+http://localhost:5173
 
 ## Troubleshooting
 - Module not found → pip install that module name
